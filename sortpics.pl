@@ -93,7 +93,7 @@ sub Process {
             $ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
          }
          else {
-            $ImgDate = stat $FileAbs}[9];
+            $ImgDate = ${stat $FileAbs}[9];
             print "Mtime = $ImgDate\n";
          }
          my $DateFmt = Date::Manip::UnixDate( $ImgDate, "%Y%m%d-%H%M%S" );
