@@ -18,7 +18,7 @@ use strict;
 # MODULES
 ################################################################################
 use Date::Manip;
-use Digest::MD5;
+use Digest::SHA;
 use File::Glob qw( :globally :nocase );
 use File::Basename;
 use File::Copy;
@@ -40,18 +40,22 @@ my $DateFileString = "%Y%m%d-%H%M%S";
 # The date string we will use to build the directories under the dest dir.
 my $DatePathString = "%Y/%m";
 
-my ($Debug, $Help, $Man, $Recursive, $Verbose);
+my ($Cleanup, $Debug, $DryRun, $Help, $Man, $Move, $Recursive, $Verbose);
 
 # Process commandline arguments.
 GetOptions (
+   'c|cleanup'    => \$Cleanup,
    'd|debug+'     => sub { $Debug++; $Verbose++; },
+   'D|dryrun'     => \$DryRun,
    'h|help'       => \$Help,
-   'm|man'        => \$Man,
+   'M|man'        => \$Man,
+   'm|move'       => \$Move,
    'r|recursive'  => \$Recursive,
    'v|verbose+'   => \$Verbose,
 ) or pod2usage( 2 );
 
 pod2usage( 1 ) if $Help;
+pod2usage( { -verbose => 2 } ) if $Man;
 pod2usage( -message => "$0: Must specify a source and destination directory.\n" ) if $#ARGV < 1;
 
 # The last directory is our target.
@@ -71,7 +75,7 @@ if ($Recursive) {
 }
 # Use &Preprocess to limit our depth.
 else {
-   find( { preprocess => \&PreProcess, wanted => \&Process }, @SrcDirs );
+   finddepth( { preprocess => \&PreProcess, wanted => \&Process }, @SrcDirs );
 }
 
 sub PreProcess {
@@ -84,9 +88,18 @@ sub Process {
    my $FileAbs = $File::Find::name;
    my $FileName = $_;
    
+   if ($Debug) { print "$FilePath | $FileAbs | $FileName\n"; }
+   
    # Only work on files.
    if (-f $FileAbs) {
-      if ($Debug) { print "$FilePath | $FileAbs | $FileName\n"; }
+      if ($Cleanup) {
+         # Remove the NIKON####.DSC file.
+         if ($FileName =~ /NIKON.*\.DSC/) {
+            if ($Verbose) { print "Cleanup $FileName\n"; }
+            unlink $FileAbs;
+            next;
+         }
+      }
       # Check if the file type is supported by ExifTool.
       my $Supported = Image::ExifTool::GetFileType( $FileAbs );
       if ($Supported) {
@@ -97,6 +110,7 @@ sub Process {
          #   print "$FileName: $Key -> " . $Info->{$Key} . "\n";
          #}
          #print "$FileName: create date = " . $Info->{'CreateDate'} . "\n";
+         
          my $ImgDate;
          # If CreateDate is in the metadata.
          if ($Info->{'CreateDate'}) {
@@ -110,23 +124,92 @@ sub Process {
             #print "Mtime = $ImgDate\n";
             # So the safest thing is to just skip the file for now.
             if ($Verbose) { 
-               print "Unable to read date from metadata, skipping file.\n";
+               print "$FileName: Unable to read date from metadata, skipping file.\n";
             }
             next;
          }
+         
+         my $Make = $Info->{'Make'} if $Info->{'Make'};
+         # Captialize the first letter of each word.
+         $Make =~ s/([\w']+)/\u\L$1/g;
+         my $Model = $Info->{'Model'} if $Info->{'Model'};
+         # Captialize the first letter of each word.
+         $Model =~ s/([\w']+)/\u\L$1/g;
+         # Remove any spaces.
+         $Model =~ s/ //g;
+         
          # Reformat the date into the date/time string we want.
          my $DateFile = Date::Manip::UnixDate( $ImgDate, $DateFileString );
          my $DatePath = Date::Manip::UnixDate( $ImgDate, $DatePathString );
          my ($Junk, $File, $Ext) = fileparse( $FileName, qr/\.[^.]*/ );
-         print "$DestPath\n";
-         my $NewFileAbs = $DestPath . $DatePath . '/' . $DateFile . $Ext;
-                  
-         print "$FileName -> $NewFileAbs\n";
+         my $NewDestPath = File::Spec->catdir( $DestPath, $DatePath );
+         my $NewFileName = $DateFile . '_' . $Make . $Model . $Ext;
+         my $NewFileAbs = File::Spec->catfile( $NewDestPath, $NewFileName );
+         
+         # Make sure the destination file doesn't exist.
+         if (-f $NewFileAbs) {
+            # Setup a file handler for the current file.
+            open( SRCFILE, "$FileAbs" ) or die "Can't open $FileAbs: $!";
+            open( DESTFILE, "$NewFileAbs" ) or die "Can't open $NewFileAbs: $!";
+            # Use binary mode to cope with all file types.
+            binmode( SRCFILE );
+            binmode( DESTFILE );
+            # Generate the checksum
+            my $SrcSHA1 = Digest::SHA1->new->addfile( *SRCFILE )->hexdigest;
+            my $DestSHA1 = Digest::SHA1->new->addfile( *DESTFILE )->hexdigest;
+            # No need for the file handler anymore.
+            close( SRCFILE );
+            close( DESTFILE );
+            if ($SrcSHA1 eq $DestSHA1) {
+               if ($Verbose) {
+                  print "$FileName: Destination file already exists, skipping.\n";
+               }
+            }
+         }
+         # It doesn't, so continue.
+         else {
+            # Unless this is a dry run..
+            unless ($DryRun) {
+               unless (-w $NewDestPath) {
+                  File::Path::make_path( $NewDestPath, {error => \my $Err} );
+                  if (@$Err) {
+                     foreach my $Diag (@$Err) {
+                        my ($File, $Message) = %$Diag;
+                        print "Error making path $NewDestPath: $Message\n";
+                     }
+                     die;
+                  }
+               }
+               if ($Move) {
+                  if ($Verbose) { print "Moving "; }
+                  move( $FileAbs, $NewFileAbs );
+               }
+               else {
+                  if ($Verbose) { print "Copying "; }
+                  copy( $FileAbs, $NewFileAbs );
+               }
+            }
+            if ($Verbose) { print "$FileName -> $NewFileAbs\n"; }
+         }
       }
       else {
-         if ($Verbose) { print "$FileName: File type is not supported.\n"; }
+         if ($Verbose) { print "$FileName: File type is not supported, skipping.\n"; }
       }
-      print "----------------------\n";
+   } #End -f $FileAbs
+   # Otherwise if this is a directory.
+   elsif (-d $FileAbs) {
+      # If we were told to cleanup.
+      if ($Cleanup) {
+         my $Rc = rmdir( $FileAbs );
+         if ($Verbose) {
+            if ($Rc) {
+               print "Cleanup $FileAbs\n";
+            }
+            else {
+               print "Unable to cleanup $FileAbs: $!\n";
+            }
+         }
+      }
    }
 }
 
