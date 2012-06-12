@@ -60,12 +60,14 @@ pod2usage( -message => "$0: Must specify a source and destination directory.\n" 
 
 # The last directory is our target.
 my $DestPath = pop @ARGV;
+$DestPath = File::Spec->rel2abs( $DestPath ) ;
 # The remaining are our source directories.
 my @SrcDirs = @ARGV;
 
 
 die "Destination directory \'$DestPath\' does not exist or is not writable.\n" unless (-d $DestPath && -w $DestPath);
 foreach my $SrcDir (@SrcDirs) {
+   $SrcDir = File::Spec->rel2abs( $SrcDir ) ;
    die "Source directory \'$SrcDir\' doesn't exist or is not readable.\n" unless (-d $SrcDir && -r $SrcDir);
 }
 
@@ -85,9 +87,11 @@ sub PreProcess {
 
 sub Process {
    my $FilePath = $File::Find::dir;
+   #my $FilePath = File::Spec->rel2abs( $Dir ) ;
    my $FileAbs = $File::Find::name;
+   #my $FileAbs = File::Spec->rel2abs( $Path ) ;
    my $FileName = $_;
-   
+   #if ($Debug) { print "$Dir | $Path | $FileName\n"; }
    if ($Debug) { print "$FilePath | $FileAbs | $FileName\n"; }
    
    # Only work on files.
