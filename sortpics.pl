@@ -38,15 +38,25 @@ use Pod::Usage;
 # The date string we will use to rename the files.
 my $DateFileString = "%Y%m%d-%H%M%S";
 # The date string we will use to build the directories under the dest dir.
-my $DatePathString = "%Y/%m";
+my $DatePathString = "%Y/%m/%Y-%m-%d";
+# List of filename patterns to outright delete.  I've found deleting these to be
+# benign.
+my @FileNamePatterns = (
+   qr/NIKON.*\.DSC/, 
+   'Thumbs.db',
+   '.picasa.ini',
+   'ZbThumbnail.info',
+);
 
-my ($Cleanup, $Debug, $DryRun, $Help, $Man, $Move, $Recursive, $Verbose);
+my ($Cleanup, $Copy, $Debug, $DryRun, $Force, $Help, $Man, $Move, $Recursive, $Verbose);
 
 # Process commandline arguments.
 GetOptions (
-   'c|cleanup'    => \$Cleanup,
+   'c|copy'       => \$Copy,
+   'C|cleanup'    => \$Cleanup,
    'd|debug+'     => sub { $Debug++; $Verbose++; },
    'D|dryrun'     => \$DryRun,
+   'f|force'      => \$Force,
    'h|help'       => \$Help,
    'M|man'        => \$Man,
    'm|move'       => \$Move,
@@ -97,12 +107,6 @@ sub Process {
    # Only work on files.
    if (-f $FileAbs) {
       if ($Cleanup) {
-         # List of file name patterns to match against next.
-         my @FileNamePatterns = (
-            qr/NIKON.*\.DSC/, 
-            'Thumbs.db',
-            '.picasa.ini',
-         );
          # Remove the file if it matches the list of patterns using smart match.
          if ($FileName ~~ @FileNamePatterns) {
             if ($Verbose) { print "Deleting $FileName\n"; }
@@ -148,13 +152,23 @@ sub Process {
          $Model =~ s/([\w']+)/\u\L$1/g;
          # Remove any spaces.
          $Model =~ s/ //g;
+         my $FileAppendString;
+         # If the Model information already contains Make
+         if ($Model =~ /^$Make/) {
+            # Just use Model.
+            $FileAppendString = $Model;
+         }
+         else {
+            # Otherwise concatenate Make and Model.
+            $FileAppendString = $Make . $Model;
+         }
          
          # Reformat the date into the date/time string we want.
          my $DateFile = UnixDate( $ImgDate, $DateFileString );
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
          my ($Junk, $File, $Ext) = fileparse( $FileName, qr/\.[^.]*/ );
          my $NewDestPath = File::Spec->catdir( $DestPath, $DatePath );
-         my $NewFileName = $DateFile . '_' . $Make . $Model . $Ext;
+         my $NewFileName = $DateFile . '_' . $FileAppendString . lc( $Ext );
          my $NewFileAbs = File::Spec->catfile( $NewDestPath, $NewFileName );
          
          # Make sure the destination file doesn't exist.
@@ -166,13 +180,16 @@ sub Process {
             binmode( SRCFILE );
             binmode( DESTFILE );
             # Generate the checksum
-            my $SrcSHA1 = Digest::SHA1->new->addfile( *SRCFILE )->hexdigest;
-            my $DestSHA1 = Digest::SHA1->new->addfile( *DESTFILE )->hexdigest;
+            my $SrcSHA1 = Digest::SHA->new(1)->addfile( *SRCFILE )->hexdigest;
+            my $DestSHA1 = Digest::SHA->new(1)->addfile( *DESTFILE )->hexdigest;
             # No need for the file handler anymore.
             close( SRCFILE );
             close( DESTFILE );
             if ($SrcSHA1 eq $DestSHA1) {
-               if ($Verbose) {
+               if ($Force) {
+                  unlink $SrcSHA1;
+               }
+               elsif ($Verbose) {
                   print "$FileName: Destination file already exists, skipping.\n";
                }
             }
@@ -191,16 +208,15 @@ sub Process {
                      die;
                   }
                }
-               if ($Move) {
-                  if ($Verbose) { print "Moving "; }
-                  move( $FileAbs, $NewFileAbs );
-               }
-               else {
-                  if ($Verbose) { print "Copying "; }
-                  copy( $FileAbs, $NewFileAbs );
-               }
             }
-            if ($Verbose) { print "$FileName -> $NewFileAbs\n"; }
+            if ($Move) {
+               if ($Verbose) { print "Moving $FileName -> $NewFileAbs\n"; }
+               unless ($DryRun) { move( $FileAbs, $NewFileAbs ); }
+            }
+            else {
+               if ($Verbose) { print "Copying $FileName -> $NewFileAbs\n"; }
+               unless ($DryRun) { copy( $FileAbs, $NewFileAbs ); }
+            }
          }
       }
       else {
@@ -210,14 +226,14 @@ sub Process {
    # Otherwise if this is a directory.
    elsif (-d $FileAbs) {
       # If we were told to cleanup.
-      if ($Cleanup) {
+      if ($Cleanup && not $DryRun) {
          my $Rc = rmdir( $FileAbs );
          if ($Verbose) {
             if ($Rc) {
-               print "Cleanup $FileAbs\n";
+               print "Removing $FileAbs\n";
             }
             else {
-               print "Unable to cleanup $FileAbs: $!\n";
+               print "Unable to remove $FileAbs: $!\n";
             }
          }
       }
