@@ -12,12 +12,12 @@
 #
 ################################################################################
 use strict;
-
+require 5.010.000;
 
 ################################################################################
 # MODULES
 ################################################################################
-use Date::Manip;
+use Date::Manip qw( ParseDate UnixDate );
 use Digest::SHA;
 use File::Glob qw( :globally :nocase );
 use File::Basename;
@@ -97,10 +97,16 @@ sub Process {
    # Only work on files.
    if (-f $FileAbs) {
       if ($Cleanup) {
-         # Remove the NIKON####.DSC file.
-         if ($FileName =~ /NIKON.*\.DSC/) {
-            if ($Verbose) { print "Cleanup $FileName\n"; }
-            unlink $FileAbs;
+         # List of file name patterns to match against next.
+         my @FileNamePatterns = (
+            qr/NIKON.*\.DSC/, 
+            'Thumbs.db',
+            '.picasa.ini',
+         );
+         # Remove the file if it matches the list of patterns using smart match.
+         if ($FileName ~~ @FileNamePatterns) {
+            if ($Verbose) { print "Deleting $FileName\n"; }
+            unless ($DryRun) { unlink $FileAbs; }
             next;
          }
       }
@@ -119,7 +125,8 @@ sub Process {
          # If CreateDate is in the metadata.
          if ($Info->{'CreateDate'}) {
             # Parse it.
-            $ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
+            #$ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
+            $ImgDate = ParseDate( $Info->{'CreateDate'} );
          }
          # Not able to read date from metadata.
          else {
@@ -143,8 +150,8 @@ sub Process {
          $Model =~ s/ //g;
          
          # Reformat the date into the date/time string we want.
-         my $DateFile = Date::Manip::UnixDate( $ImgDate, $DateFileString );
-         my $DatePath = Date::Manip::UnixDate( $ImgDate, $DatePathString );
+         my $DateFile = UnixDate( $ImgDate, $DateFileString );
+         my $DatePath = UnixDate( $ImgDate, $DatePathString );
          my ($Junk, $File, $Ext) = fileparse( $FileName, qr/\.[^.]*/ );
          my $NewDestPath = File::Spec->catdir( $DestPath, $DatePath );
          my $NewFileName = $DateFile . '_' . $Make . $Model . $Ext;
