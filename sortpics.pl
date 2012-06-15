@@ -229,7 +229,8 @@ sub Process {
                      # Delete the file.
                      unlink $FileAbs or print "$FileAbs: Unable to delte: $!\n";
                   }
-                  # Otherwise if we're being chatty, inform the user we're leaving the file be..
+                  # Otherwise if we're being chatty, inform the user we're
+                  # leaving the file be..
                   elsif ($Verbose) {
                      print "$FileAbs: Destination file already exists, skipping.\n";
                   }
@@ -238,10 +239,21 @@ sub Process {
                   last;
                }
                
-               # Otherwise,
-               # Adjust the filename by appending the counter. Lather, rinse, repeat.
-               $Count++;
-               $NewFileAbs = File::Spec->catfile( $NewDestPath, $NewFileName . '_' . $Count . $Ext );
+               # If forced, increment the filename.  Lather, rinse, repeat.
+               if ($Force) {
+                  $Count++;
+                  $NewFileAbs = File::Spec->catfile(
+                     $NewDestPath,
+                     $NewFileName . '_' . $Count . $Ext
+                  );
+               }
+               # Otherwise the safer thing is to leave it be to let a human
+               # deal with it.
+               else {
+                  $Skip = 1;
+                  # Jump out of the while loop.
+                  last;
+               }
             }
          }
 
@@ -249,6 +261,13 @@ sub Process {
          if ($Dupe) {
            # Increment the counter.
            $Counter{'dupe'}++;
+           # And jump to the next source file.
+           next;
+         }
+         # If we found a file with the same name,
+         if ($Skip) {
+           # Increment the counter.
+           $Counter{'skip'}++;
            # And jump to the next source file.
            next;
          }
