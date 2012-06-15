@@ -109,7 +109,7 @@ sub Process {
       if ($Cleanup) {
          # Remove the file if it matches the list of patterns using smart match.
          if ($FileName ~~ @FileNamePatterns) {
-            if ($Verbose) { print "Deleting $FileName\n"; }
+            if ($Verbose) { print "Deleting $FileAbs\n"; }
             unless ($DryRun) { unlink $FileAbs; }
             next;
          }
@@ -117,7 +117,7 @@ sub Process {
       # Check if the file type is supported by ExifTool.
       my $Supported = Image::ExifTool::GetFileType( $FileAbs );
       if ($Supported) {
-         if ($Debug) { print "$FileName: $Supported\n"; }
+         if ($Debug) { print "$FileAbs: $Supported\n"; }
          # Read all of the metadata from the file.
          my $Info = Image::ExifTool::ImageInfo( $FileAbs );
          #foreach my $Key (sort {$a <=> $b} keys %$Info) {
@@ -139,7 +139,7 @@ sub Process {
             #print "Mtime = $ImgDate\n";
             # So the safest thing is to just skip the file for now.
             if ($Verbose) { 
-               print "$FileName: Unable to read date from metadata, skipping file.\n";
+               print "$FileAbs: Unable to read date from metadata, skipping file.\n";
             }
             next;
          }
@@ -187,10 +187,13 @@ sub Process {
             close( DESTFILE );
             if ($SrcSHA1 eq $DestSHA1) {
                if ($Force) {
-                  unlink $SrcSHA1;
+                  if ($Verbose) {
+                     print "$FileAbs: Destination file already exists; deletion forced.\n";
+                  }
+                  unlink $FileAbs;
                }
                elsif ($Verbose) {
-                  print "$FileName: Destination file already exists, skipping.\n";
+                  print "$FileAbs: Destination file already exists, skipping.\n";
                }
             }
          }
