@@ -13,6 +13,7 @@
 ################################################################################
 use strict;
 require 5.010.000;
+#use feature 'fc';
 
 ################################################################################
 # MODULES
@@ -35,6 +36,12 @@ use Pod::Usage;
 # MAIN
 ################################################################################
 
+#BEGIN {
+#    if ($] < 5.016) {
+#        require Unicode::CaseFold;
+#    }
+#}
+
 # The date string we will use to rename the files.
 my $DateFileString = "%Y%m%d-%H%M%S";
 # The date string we will use to build the directories under the dest dir.
@@ -45,6 +52,7 @@ my @FileNamePatterns = (
    qr/NIKON.*\.DSC/, 
    'Thumbs.db',
    '.picasa.ini',
+   'Picasa.ini',
    'ZbThumbnail.info',
 );
 
@@ -81,18 +89,25 @@ foreach my $SrcDir (@SrcDirs) {
    die "Source directory \'$SrcDir\' doesn't exist or is not readable.\n" unless (-d $SrcDir && -r $SrcDir);
 }
 
+# Counts number of images processed
+my %Counter = (
+   'skip'  => 0,
+   'copy'  => 0,
+   'dupe'  => 0,
+);
 
-if ($Recursive) {
-   finddepth( \&Process, @SrcDirs );
-}
-# Use &Preprocess to limit our depth.
-else {
-   finddepth( { preprocess => \&PreProcess, wanted => \&Process }, @SrcDirs );
-}
+# Use &Preprocess to sort and optionally limit our depth.
+finddepth( { preprocess => \&PreProcess, wanted => \&Process }, @SrcDirs );
 
 sub PreProcess {
-   # Return just files if not recursive.
-   return grep { not -d } @_;
+   if ($Recursive) {
+     # Return the list sorted.
+     return sort @_;
+   }
+   else {
+     # Return just sorted files if not recursive.
+     return sort( grep { not -d } @_ );
+   }
 }
 
 sub Process {
@@ -110,7 +125,7 @@ sub Process {
          # Remove the file if it matches the list of patterns using smart match.
          if ($FileName ~~ @FileNamePatterns) {
             if ($Verbose) { print "Deleting $FileAbs\n"; }
-            unless ($DryRun) { unlink $FileAbs; }
+            unless ($DryRun) { unlink $FileAbs or print "$FileAbs: Unable to delete: $!\n"; }
             next;
          }
       }
@@ -139,7 +154,7 @@ sub Process {
             #print "Mtime = $ImgDate\n";
             # So the safest thing is to just skip the file for now.
             if ($Verbose) { 
-               print "$FileAbs: Unable to read date from metadata, skipping file.\n";
+               print "$FileAbs: Unable to read date from metadata, skipping.\n";
             }
             next;
          }
@@ -147,12 +162,20 @@ sub Process {
          my $Make = $Info->{'Make'} if $Info->{'Make'};
          # Captialize the first letter of each word.
          $Make =~ s/([\w']+)/\u\L$1/g;
+         # Remove any spaces.
+         $Make =~ s/ //g;
+         # Adjust 'LgElectonrics' to just 'Lg'
+         if ($Make =~ /^Lg/ ) {
+             $Make = 'Lg';
+         }
+
          my $Model = $Info->{'Model'} if $Info->{'Model'};
          # Captialize the first letter of each word.
          $Model =~ s/([\w']+)/\u\L$1/g;
          # Remove any spaces.
          $Model =~ s/ //g;
          my $FileAppendString;
+         
          # If the Model information already contains Make
          if ($Model =~ /^$Make/) {
             # Just use Model.
@@ -167,65 +190,106 @@ sub Process {
          my $DateFile = UnixDate( $ImgDate, $DateFileString );
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
          my ($Junk, $File, $Ext) = fileparse( $FileName, qr/\.[^.]*/ );
+         $Ext = lc $Ext;
          my $NewDestPath = File::Spec->catdir( $DestPath, $DatePath );
-         my $NewFileName = $DateFile . '_' . $FileAppendString . lc( $Ext );
-         my $NewFileAbs = File::Spec->catfile( $NewDestPath, $NewFileName );
+         my $NewFileName = $DateFile . '_' . $FileAppendString;
+         my $NewFileAbs = File::Spec->catfile( $NewDestPath, $NewFileName.$Ext );
          
          # Make sure the destination file doesn't exist.
+         my $Dupe = 0;
          if (-f $NewFileAbs) {
-            # Setup a file handler for the current file.
+            # It does so we use SHA1 hashes to identify if the files are the same
+            
+            # Generate the SHA1 hash for the source file.
             open( SRCFILE, "$FileAbs" ) or die "Can't open $FileAbs: $!";
-            open( DESTFILE, "$NewFileAbs" ) or die "Can't open $NewFileAbs: $!";
-            # Use binary mode to cope with all file types.
             binmode( SRCFILE );
-            binmode( DESTFILE );
-            # Generate the checksum
             my $SrcSHA1 = Digest::SHA->new(1)->addfile( *SRCFILE )->hexdigest;
-            my $DestSHA1 = Digest::SHA->new(1)->addfile( *DESTFILE )->hexdigest;
-            # No need for the file handler anymore.
             close( SRCFILE );
-            close( DESTFILE );
-            if ($SrcSHA1 eq $DestSHA1) {
-               if ($Force) {
-                  if ($Verbose) {
-                     print "$FileAbs: Destination file already exists; deletion forced.\n";
-                  }
-                  unlink $FileAbs;
-               }
-               elsif ($Verbose) {
-                  print "$FileAbs: Destination file already exists, skipping.\n";
-               }
-            }
-         }
-         # It doesn't, so continue.
-         else {
-            # Unless this is a dry run..
-            unless ($DryRun) {
-               unless (-w $NewDestPath) {
-                  File::Path::make_path( $NewDestPath, {error => \my $Err} );
-                  if (@$Err) {
-                     foreach my $Diag (@$Err) {
-                        my ($File, $Message) = %$Diag;
-                        print "Error making path $NewDestPath: $Message\n";
+            
+            # Loop on the new filename when we test the hashes so we can increment
+            # the filename at the end until we find a filename that doesn't exist.
+            my $Count = 0;
+            while (-f $NewFileAbs) {
+               # Generate the SHA1 hash for the source file.
+               open( DESTFILE, "$NewFileAbs" ) or die "Can't open $NewFileAbs: $!";
+               binmode( DESTFILE );
+               my $DestSHA1 = Digest::SHA->new(1)->addfile( *DESTFILE )->hexdigest;
+               close( DESTFILE );
+
+               # If the SHA1 hashes match
+               if ($SrcSHA1 eq $DestSHA1) {
+                  # Files have identical content!
+
+                  if ($Debug) { print "$FileAbs: $SrcSHA1\n$NewFileAbs: $DestSHA1\n"; }
+                  # If we're told to force cleanup.
+                  if ($Force) {
+                     if ($Verbose) {
+                        print "$FileAbs: Destination file already exists; deletion forced.\n";
                      }
-                     die;
+                     # Delete the file.
+                     unlink $FileAbs or print "$FileAbs: Unable to delte: $!\n";
                   }
+                  # Otherwise if we're being chatty, inform the user we're leaving the file be..
+                  elsif ($Verbose) {
+                     print "$FileAbs: Destination file already exists, skipping.\n";
+                  }
+                  $Dupe = 1;
+                  # Jump out of the while loop.
+                  last;
                }
-            }
-            if ($Move) {
-               if ($Verbose) { print "Moving $FileName -> $NewFileAbs\n"; }
-               unless ($DryRun) { move( $FileAbs, $NewFileAbs ); }
-            }
-            else {
-               if ($Verbose) { print "Copying $FileName -> $NewFileAbs\n"; }
-               unless ($DryRun) { copy( $FileAbs, $NewFileAbs ); }
+               
+               # Otherwise,
+               # Adjust the filename by appending the counter. Lather, rinse, repeat.
+               $Count++;
+               $NewFileAbs = File::Spec->catfile( $NewDestPath, $NewFileName . '_' . $Count . $Ext );
             }
          }
-      }
+
+         # If we found a duplicate file,
+         if ($Dupe) {
+           # Increment the counter.
+           $Counter{'dupe'}++;
+           # And jump to the next source file.
+           next;
+         }
+
+         # At this point we are ready to actually process the source file!
+
+         # Unless this is a dry run..
+         unless ($DryRun) {
+            # Unless the destination path exists.
+            unless (-w $NewDestPath) {
+               # Make the path in one fell swoop.
+               File::Path::make_path( $NewDestPath, {error => \my $Err} );
+               # If that had a problem, inform the user and die.
+               if (@$Err) {
+                  foreach my $Diag (@$Err) {
+                     my ($File, $Message) = %$Diag;
+                     print "Error making path $NewDestPath: $Message\n";
+                  }
+                  die;
+               }
+            }
+         }
+         
+         if ($Move) {
+            if ($Verbose) { print "Moving $FileName -> $NewFileAbs\n"; }
+            unless ($DryRun) { move( $FileAbs, $NewFileAbs ); }
+         }
+         
+         else {
+            if ($Verbose) { print "Copying $FileName -> $NewFileAbs\n"; }
+            unless ($DryRun) { copy( $FileAbs, $NewFileAbs ); }
+         }
+
+      } # END if ($Supported)
+
       else {
          if ($Verbose) { print "$FileName: File type is not supported, skipping.\n"; }
       }
-   } #End -f $FileAbs
+
+   } #END if (-f $FileAbs)
+
    # Otherwise if this is a directory.
    elsif (-d $FileAbs) {
       # If we were told to cleanup.
@@ -241,6 +305,9 @@ sub Process {
          }
       }
    }
+
+   if ($Debug) { print "\n"; }
+
 }
 
 __END__
