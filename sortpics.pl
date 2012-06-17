@@ -1,32 +1,25 @@
 #!/usr/bin/env perl
 ################################################################################
-#
-# exifsort.pl - exifsort@stalks.nooblet.org [2007.11.12]
-# - Based on a concept by Lars Strand
-#
-# I've added
-#   date/time checking
-#   folder sorting, with folder creation,
-#   md5 checksum comparision
-#   Structured display output with useful statistics
-#
+# sortpics.pl - Sort pictures using EXIF metadata information.
+# 
+# Written by Chris Clonch <chris@theclonchs.com>.  See man page using -M, --man
+# for copyright and license notice.
 ################################################################################
 use strict;
 require 5.010.000;
 #use feature 'fc';
+
 
 ################################################################################
 # MODULES
 ################################################################################
 use Date::Manip qw( ParseDate UnixDate );
 use Digest::SHA;
-use File::Glob qw( :globally :nocase );
 use File::Basename;
 use File::Copy;
 use File::Find;
 use File::Path;
 use File::Spec;
-use File::stat;
 use Getopt::Long qw( :config bundling pass_through );
 use Image::ExifTool;
 use Pod::Usage;
@@ -63,18 +56,24 @@ GetOptions (
    'c|copy'       => \$Copy,
    'C|cleanup'    => \$Cleanup,
    'd|debug+'     => sub { $Debug++; $Verbose++; },
-   'D|dryrun'     => \$DryRun,
+   'D|dry-run'    => \$DryRun,
    'f|force'      => \$Force,
    'h|help'       => \$Help,
    'M|man'        => \$Man,
    'm|move'       => \$Move,
    'r|recursive'  => \$Recursive,
    'v|verbose+'   => \$Verbose,
-) or pod2usage( 2 );
+) or pod2usage( -verbose => 0, -exitval => 1 );
 
-pod2usage( 1 ) if $Help;
-pod2usage( { -verbose => 2 } ) if $Man;
-pod2usage( -message => "$0: Must specify a source and destination directory.\n" ) if $#ARGV < 1;
+pod2usage( -verbose => 0, -exitval => 0 ) if $Help;
+pod2usage( -verbose => 2, -exitval => 0 ) if $Man;
+if ($#ARGV < 1) {
+   pod2usage(
+      -message => "$0: Must specify a source and destination directory.\n",
+      -verbose => 0,
+      -exitval => 1,
+   );
+}
 
 # The last directory is our target.
 my $DestPath = pop @ARGV;
@@ -82,15 +81,20 @@ $DestPath = File::Spec->rel2abs( $DestPath ) ;
 # The remaining are our source directories.
 my @SrcDirs = @ARGV;
 
-
-die "Destination directory \'$DestPath\' does not exist or is not writable.\n" unless (-d $DestPath && -w $DestPath);
+# Destination directory must be a directory and writable.
+unless (-d $DestPath && -w $DestPath) {
+   die "Destination directory \'$DestPath\' does not exist or is not writable.\n";
+}
+# Make sure each source directory is a directory and readable.
 foreach my $SrcDir (@SrcDirs) {
    $SrcDir = File::Spec->rel2abs( $SrcDir ) ;
-   die "Source directory \'$SrcDir\' doesn't exist or is not readable.\n" unless (-d $SrcDir && -r $SrcDir);
+   unless (-d $SrcDir && -r $SrcDir) {
+      die "Source directory \'$SrcDir\' doesn't exist or is not readable.\n";
+   }
 }
 
-# Counts number of images processed
-my %Counter = (
+# Record counts of files we process.
+my %Counts = (
    'skip'  => 0,
    'copy'  => 0,
    'dupe'  => 0,
@@ -112,11 +116,8 @@ sub PreProcess {
 
 sub Process {
    my $FilePath = $File::Find::dir;
-   #my $FilePath = File::Spec->rel2abs( $Dir ) ;
    my $FileAbs = $File::Find::name;
-   #my $FileAbs = File::Spec->rel2abs( $Path ) ;
    my $FileName = $_;
-   #if ($Debug) { print "$Dir | $Path | $FileName\n"; }
    if ($Debug) { print "$FilePath | $FileAbs | $FileName\n"; }
    
    # Only work on files.
@@ -135,10 +136,12 @@ sub Process {
          if ($Debug) { print "$FileAbs: $Supported\n"; }
          # Read all of the metadata from the file.
          my $Info = Image::ExifTool::ImageInfo( $FileAbs );
-         #foreach my $Key (sort {$a <=> $b} keys %$Info) {
-         #   print "$FileName: $Key -> " . $Info->{$Key} . "\n";
-         #}
-         #print "$FileName: create date = " . $Info->{'CreateDate'} . "\n";
+         # Output all of the metadata if -dd
+         if ($Debug > 1) {
+            foreach my $Key (sort {$a <=> $b} keys %$Info) {
+               print "$FileName: $Key -> " . $Info->{$Key} . "\n";
+            }
+         }
          
          my $ImgDate;
          # If CreateDate is in the metadata.
@@ -149,9 +152,10 @@ sub Process {
          }
          # Not able to read date from metadata.
          else {
-            # Getting the mtime is not working...
+            # Getting the mtime does not work reliablity.
             #$ImgDate = ${stat $FileAbs}[9];
             #print "Mtime = $ImgDate\n";
+            
             # So the safest thing is to just skip the file for now.
             if ($Verbose) { 
                print "$FileAbs: Unable to read date from metadata, skipping.\n";
@@ -186,17 +190,19 @@ sub Process {
             $FileAppendString = $Make . $Model;
          }
          
-         # Reformat the date into the date/time string we want.
+         # Reformat the dates into the date/time string we want.
          my $DateFile = UnixDate( $ImgDate, $DateFileString );
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
+         # Seperate the filename from the extension.
          my ($Junk, $File, $Ext) = fileparse( $FileName, qr/\.[^.]*/ );
+         # Force the extension to lowercase.
          $Ext = lc $Ext;
          my $NewDestPath = File::Spec->catdir( $DestPath, $DatePath );
          my $NewFileName = $DateFile . '_' . $FileAppendString;
          my $NewFileAbs = File::Spec->catfile( $NewDestPath, $NewFileName.$Ext );
          
          # Make sure the destination file doesn't exist.
-         my $Dupe = 0;
+         my ($Dupe, $Skip) = 0;
          if (-f $NewFileAbs) {
             # It does so we use SHA1 hashes to identify if the files are the same
             
@@ -260,14 +266,14 @@ sub Process {
          # If we found a duplicate file,
          if ($Dupe) {
            # Increment the counter.
-           $Counter{'dupe'}++;
+           $Counts{'dupe'}++;
            # And jump to the next source file.
            next;
          }
          # If we found a file with the same name,
          if ($Skip) {
            # Increment the counter.
-           $Counter{'skip'}++;
+           $Counts{'skip'}++;
            # And jump to the next source file.
            next;
          }
@@ -333,40 +339,129 @@ __END__
 
 =head1 NAME
 
-sortpics.pl - Uses EXIF information to sort pics from SRC directories to DEST directory.
+sortpics.pl - Sort pictures using EXIF metadata information.
 
 =head1 SYNOPSIS
 
-sortpics.pl [options] SRC [SRC ...] DEST
+sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
 
  Options:
-   -d, --debug       Enable debug output
-   -h, --help        Brief help message
-   -m, --man         Prints a man page.
-   -v, --verbose     Enable more output
+   -C, --cleanup     delete non-picture files and empty directories
+   -d, --debug       enable debug output
+   -D, --dry-run     perform a trial run without making any changes
+   -f, --force       force deletion of duplicate files, rename others
+   -h, --help        print a brief help message
+   -M, --man         prints a detailed man page
+   -m, --move        move files instead of just copying them
+   -r, --recursive   recurse into directories
+   -v, --verbose     enable output
 
 =head1 OPTIONS
 
 =over 8
+
+=item B<-C, --cleanup>
+
+Causes the script to delete certain non-picture files that were created by digital
+cameras and picture software.  It also causes the script to delete empty
+directories as it processes files.
 
 =item B<-d, --debug>
 
 Enable debug output.  This causes more information to be outputted which may
 be useful in debugging the script.
 
+=item B<D, --dry-run>
+
+Enables dryrun mode, which steps through everything that will happen without
+making any changes.  It works best with the -v, --verbose option to see what will
+happen during a real run.
+   
+=item B<-f, --force>
+
+Enables force mode.  In particular, this causes 2 major changes in the scripts
+execution.  One, duplicate files are deleted instead of being left alone and two,
+files with the same filename have an incremented number appended to them.  In the
+first instance, SHA1 hashes matching pretty much guarantees the files are identical
+but the script plays it safe by leaving files be.  However, in the second case, the script
+can not guarantee files with the same names will end up in proper cronological
+order.  Since both actions may not be the safest path they are left to the user
+to choose.
+
 =item B<-h, --help>
 
-Print a brief help message and exits.
+Print a brief help message describing the options of the script and exits.
+
+=item B<-m, --move>
+
+Move the files instead of copying them.
+
+=item B<-M, --man>
+
+Output a detailed help message formatted as a man page.
+
+=item B<-r, --recursive>
+
+This causes the script to process the source directories recursively.  This also
+causes the script to operate in a manner similar to "find -depth" so that it
+works from the bottom up.
 
 =item B<-v, --verbose>
 
 Enable verbose output.  This causes more information to be outputted which may
-be useful in debugging the metadata.
+be useful in following along with what the script is doing.
 
 =back
 
 =head1 DESCRIPTION
 
-B<sortpics.pl> will recursivley transverse the directories.
+B<sortpics.pl> sorts pictures from SOURCE directory, or multiple SOURCE directories
+to DESTINATION directory using the "Create Date" timestamp and the camera's
+make/model information from the EXIF metadata.  Its purpose is to bring order
+and sanity to digital picture organization.  By using the pictures timestamp, it
+creates a directory structure and filename that arranges everything cronologically.
+
+Safety is of the utmost importance so SHA1 hashes are used to verify duplicate
+files.
+
+=head1 DEPENDENCIES
+
+The following modules are used which are not part of the core perl distribution.
+
+=item Date::Manip
+
+=item Digest::SHA
+
+=item Image::ExifTool
+
+=head1 BUGS AND LIMITATIONS
+
+When mltiple destination files with the same name are found while using -d,
+--dry-run and -f, --force options at the same time the script will not correctly
+increment the counter used in the new filenames.
+
+Please report problems to the author.  Patches are welcome.
+
+=head1 AUTHOR
+
+Written by Chris Clonch <chris@theclonchs.com>
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2012 Chris Clonch <chris@theclonchs.com>.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3 of the License, or
+(at your option) any later version <http://gnu.org/licenses/gpl.html>.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software Foundation,
+Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 
 =cut
