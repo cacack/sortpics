@@ -49,7 +49,7 @@ my @FileNamePatterns = (
    'ZbThumbnail.info',
 );
 
-my ($Cleanup, $Copy, $Debug, $DryRun, $Force, $Help, $Man, $Move, $Recursive, $Verbose);
+my ($Cleanup, $Copy, $Debug, $DryRun, $Force, $Help, $Logic, $Man, $Move, $Recursive, $Verbose);
 
 # Process commandline arguments.
 GetOptions (
@@ -59,6 +59,7 @@ GetOptions (
    'D|dry-run'    => \$DryRun,
    'f|force'      => \$Force,
    'h|help'       => \$Help,
+   'l|logic+'     => \$Logic,
    'M|man'        => \$Man,
    'm|move'       => \$Move,
    'r|recursive'  => \$Recursive,
@@ -153,6 +154,36 @@ sub Process {
             # Parse it.
             $ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
          }
+         # If advanced logic levels are enabled,
+         elsif ($Logic > 0) {
+            # Start with examining parent folder for valid date.
+            # Seperate everything into its pieces.
+            my ($Vol, $Path, $File) = File::Spec->splitpath( $FileAbs );
+            my @Dirs = File::Spec->splitdir( $Path );
+            # Start with the current directory and work our way up.
+            foreach my $Dir (reverse @Dirs) {
+               # Cleanup the directory a bit.
+               $Dir =~ s/_//g;
+               $Dir =~ s/-//g;
+               $Dir =~ s/ //g;
+               # Parse it
+               $ImgDate = Date::Manip::ParseDate( $Dir );
+               if ($ImgDate) {
+                  # If we found a date jump out of the loop.
+                  last;
+               }
+            }
+            # Now test the date.
+            if ($ImgDate) {
+               # This should test how complete the date we found is.
+               # Date::Manip::Date::complete looks promising.
+            }
+            else {
+               warn "$FileAbs: Unable to determine date from directory, skipping.\n";
+               if ($Debug) { print "Date = $ImgDate\n"; }
+               next;
+            }
+         }
          # Not able to read date from metadata.
          else {
             # Getting the mtime does not work reliablity.
@@ -175,6 +206,10 @@ sub Process {
          if ($Make =~ /^Lg/ ) {
              $Make = 'Lg';
          }
+         # Adjust 'ResearchInMotion' to just 'RIM'
+         if ($Make =~ /^ResearchInMotion/ ) {
+             $Make = 'RIM';
+         }
 
          my $Model = $Info->{'Model'} if $Info->{'Model'};
          # Captialize the first letter of each word.
@@ -184,13 +219,18 @@ sub Process {
          my $FileAppendString;
          
          # If the Model information already contains Make
-         if ($Model =~ /^$Make/) {
+         if ($Model && $Model =~ /^$Make/) {
             # Just use Model.
             $FileAppendString = $Model;
          }
-         else {
+         # Else if we have either the Make or Model.
+         elsif ($Make || $Model) {
             # Otherwise concatenate Make and Model.
             $FileAppendString = $Make . $Model;
+         }
+         # Otherwise default to unknown.
+         else {
+            $FileAppendString = 'Unknown';
          }
          
          # Reformat the dates into the date/time string we want.
