@@ -179,7 +179,7 @@ sub Process {
          # If advanced logic levels are enabled,
          elsif ($Logic > 0) {
             # Start with examining parent folder for valid date.
-            # Seperate everything into its pieces.
+            # Separate everything into its pieces.
             my ($Vol, $Path, $File) = File::Spec->splitpath( $FileAbs );
             my @Dirs = File::Spec->splitdir( $Path );
             # Start with the current directory and work our way up.
@@ -208,7 +208,7 @@ sub Process {
          }
          # Not able to read date from metadata.
          else {
-            # Getting the mtime does not work reliablity.
+            # Getting the mtime does not work reliably.
             #$ImgDate = ${stat $FileAbs}[9];
             #print "Mtime = $ImgDate\n";
             
@@ -220,7 +220,7 @@ sub Process {
          }
          
          my $Make = $Info->{'Make'} if $Info->{'Make'};
-         # Captialize the first letter of each word.
+         # Capitalize the first letter of each word.
          $Make =~ s/([\w']+)/\u\L$1/g;
          # Remove any spaces.
          $Make =~ s/ //g;
@@ -234,7 +234,7 @@ sub Process {
          }
 
          my $Model = $Info->{'Model'} if $Info->{'Model'};
-         # Captialize the first letter of each word.
+         # Capitalize the first letter of each word.
          $Model =~ s/([\w']+)/\u\L$1/g;
          # Remove any spaces.
          $Model =~ s/ //g;
@@ -258,7 +258,7 @@ sub Process {
          # Reformat the dates into the date/time string we want.
          my $DateFile = UnixDate( $ImgDate, $DateFileString );
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
-         # Seperate the filename from the extension.
+         # Separate the filename from the extension.
          my ($Junk, $File, $Ext) = fileparse( $FileName, qr/\.[^.]*/ );
          # Force the extension to lowercase.
          $Ext = lc $Ext;
@@ -298,7 +298,7 @@ sub Process {
                         print "$FileAbs: Destination file already exists; deletion forced.\n";
                      }
                      # Delete the file.
-                     unlink $FileAbs or print "$FileAbs: Unable to delte: $!\n";
+                     unlink $FileAbs or print "$FileAbs: Unable to delete: $!\n";
                   }
                   # Otherwise if we're being chatty, inform the user we're
                   # leaving the file be..
