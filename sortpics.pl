@@ -145,10 +145,13 @@ sub Process {
          
          my $ImgDate;
          # If CreateDate is in the metadata.
-         if ($Info->{'CreateDate'}) {
+         if ($Info->{'DateTimeOriginal'}) {
             # Parse it.
-            #$ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
-            $ImgDate = ParseDate( $Info->{'CreateDate'} );
+            $ImgDate = Date::Manip::ParseDate( $Info->{'DateTimeOriginal'} );
+         }
+         elsif ($Info->{'CreateDate'}) {
+            # Parse it.
+            $ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
          }
          # Not able to read date from metadata.
          else {
