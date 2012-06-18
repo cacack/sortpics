@@ -35,6 +35,10 @@ use Pod::Usage;
 #    }
 #}
 
+#------------------------------------------------------------------------------
+# Items worth adjusting for your needs...
+#------------------------------------------------------------------------------
+
 # The date string we will use to rename the files.
 my $DateFileString = "%Y%m%d-%H%M%S";
 # The date string we will use to build the directories under the dest dir.
@@ -49,6 +53,9 @@ my @FileNamePatterns = (
    'ZbThumbnail.info',
 );
 
+#------------------------------------------------------------------------------
+# Commandline args
+#------------------------------------------------------------------------------
 my ($Cleanup, $Copy, $Debug, $DryRun, $Force, $Help, $Logic, $Man, $Move, $Recursive, $Verbose);
 
 # Process commandline arguments.
@@ -59,7 +66,7 @@ GetOptions (
    'D|dry-run'    => \$DryRun,
    'f|force'      => \$Force,
    'h|help'       => \$Help,
-   'l|logic+'     => \$Logic,
+   'l|logic=i'    => \$Logic,
    'M|man'        => \$Man,
    'm|move'       => \$Move,
    'r|recursive'  => \$Recursive,
@@ -94,6 +101,9 @@ foreach my $SrcDir (@SrcDirs) {
    }
 }
 
+#------------------------------------------------------------------------------
+# The real main bits.
+#------------------------------------------------------------------------------
 # Record counts of files we process.
 my %Counts = (
    'skip'  => 0,
@@ -104,6 +114,14 @@ my %Counts = (
 # Use &Preprocess to sort and optionally limit our depth.
 finddepth( { preprocess => \&PreProcess, wanted => \&Process }, @SrcDirs );
 
+
+################################################################################
+# SUBROUTINES
+################################################################################
+
+#------------------------------------------------------------------------------
+# Subroutine: PreProcess
+#------------------------------------------------------------------------------
 sub PreProcess {
    if ($Recursive) {
      # Return the list sorted.
@@ -115,6 +133,10 @@ sub PreProcess {
    }
 }
 
+
+#------------------------------------------------------------------------------
+# Subroutine: Process
+#------------------------------------------------------------------------------
 sub Process {
    my $FilePath = $File::Find::dir;
    my $FileAbs = $File::Find::name;
@@ -391,15 +413,31 @@ sortpics.pl - Sort pictures using EXIF metadata information.
 sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
 
  Options:
-   -C, --cleanup     delete non-picture files and empty directories
-   -d, --debug       enable debug output
-   -D, --dry-run     perform a trial run without making any changes
-   -f, --force       force deletion of duplicate files, rename others
-   -h, --help        print a brief help message
-   -M, --man         prints a detailed man page
-   -m, --move        move files instead of just copying them
-   -r, --recursive   recurse into directories
-   -v, --verbose     enable output
+   -C, --cleanup        delete non-picture files and empty directories
+   -d, --debug          enable debug output
+   -D, --dry-run        perform a trial run without making any changes
+   -f, --force          force deletion of duplicate files, rename others
+   -h, --help           print a brief help message
+   -l, --logic INTEGER  set advanced logic to INTEGER
+   -M, --man            prints a detailed man page
+   -m, --move           move files instead of just copying them
+   -r, --recursive      recurse into directories
+   -v, --verbose        enable output
+
+=head1 DESCRIPTION
+
+B<sortpics.pl> sorts pictures from SOURCE directory, or multiple SOURCE directories
+to DESTINATION directory using timestamp and the camera's make/model information
+from the EXIF metadata.  Its purpose is to bring order and sanity to digital picture
+organization.  By using the pictures timestamp, it creates a directory structure
+and filename that arranges everything cronologically.
+
+The script will use the either the "DateTimeOriginal" or "CreateDate" tags;
+whichever is found first.  This can be adjusted using the B<-l, --logic INTEGER
+argument to enable advanced heursitics.
+
+Safety is of the utmost importance so SHA1 hashes are used to verify duplicate
+files.
 
 =head1 OPTIONS
 
@@ -437,6 +475,15 @@ to choose.
 
 Print a brief help message describing the options of the script and exits.
 
+=item B<-l, --logic NUMBER>
+
+Sets advanced date/time heuristics.  NUMBER corresponds to an integer that
+represents an increasing amount of logic to use in determining a pictures
+date when the metadata does not contain one.  Currently, the values are so:
+
+1 - Tests each directory for a date starting with the file's current directory
+and working upwards through the file's path.
+
 =item B<-m, --move>
 
 Move the files instead of copying them.
@@ -457,17 +504,6 @@ Enable verbose output.  This causes more information to be outputted which may
 be useful in following along with what the script is doing.
 
 =back
-
-=head1 DESCRIPTION
-
-B<sortpics.pl> sorts pictures from SOURCE directory, or multiple SOURCE directories
-to DESTINATION directory using the "Create Date" timestamp and the camera's
-make/model information from the EXIF metadata.  Its purpose is to bring order
-and sanity to digital picture organization.  By using the pictures timestamp, it
-creates a directory structure and filename that arranges everything cronologically.
-
-Safety is of the utmost importance so SHA1 hashes are used to verify duplicate
-files.
 
 =head1 DEPENDENCIES
 
