@@ -138,7 +138,7 @@ sub Process {
          my $Info = Image::ExifTool::ImageInfo( $FileAbs );
          # Output all of the metadata if -dd
          if ($Debug > 1) {
-            foreach my $Key (sort {$a <=> $b} keys %$Info) {
+            foreach my $Key (sort keys %$Info) {
                print "$FileName: $Key -> " . $Info->{$Key} . "\n";
             }
          }
@@ -248,14 +248,16 @@ sub Process {
                # If forced, increment the filename.  Lather, rinse, repeat.
                if ($Force) {
                   $Count++;
+                  my $Num = sprintf( "%04d", $Count );
                   $NewFileAbs = File::Spec->catfile(
                      $NewDestPath,
-                     $NewFileName . '_' . $Count . $Ext
+                     $NewFileName . '_' . $Num . $Ext
                   );
                }
                # Otherwise the safer thing is to leave it be to let a human
                # deal with it.
                else {
+                  print "$FileAbs: Destination file with same name, skipping.\n";
                   $Skip = 1;
                   # Jump out of the while loop.
                   last;
