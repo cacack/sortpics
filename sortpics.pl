@@ -415,10 +415,10 @@ sub Process {
          my $Rc = rmdir( $FileAbs );
          if ($Verbose) {
             if ($Rc) {
-               print "Removing $FileAbs\n";
+               print "Delete directory $FileAbs\n";
             }
             else {
-               print "Unable to remove $FileAbs: $!\n";
+               print "Unable to delete directory $FileAbs: $!\n";
             }
          }
       }
