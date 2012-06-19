@@ -167,18 +167,34 @@ sub Process {
          }
          
          my $ImgDate;
-         # If CreateDate is in the metadata.
+         my $SubSec = 0;
+         # Check for metadata 
          if ($Info->{'DateTimeOriginal'}) {
             # Parse it.
             $ImgDate = Date::Manip::ParseDate( $Info->{'DateTimeOriginal'} );
+            # Parse subsec timing if its there.
+            if ($Info->{'SubSecTimeOriginal'}) {
+               $SubSec = $Info->{'SubSecTimeOriginal'};
+            }
+            elsif ($Info->{'SubSecTime'}) {
+               $SubSec = $Info->{'SubSecTime'};
+            }
          }
+         # If CreateDate is in the metadata.
          elsif ($Info->{'CreateDate'}) {
             # Parse it.
             $ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
+            # Parse subsec timing if its there.
+            if ($Info->{'SubSecTimeOriginal'}) {
+               $SubSec = $Info->{'SubSecTimeOriginal'};
+            }
+            elsif ($Info->{'SubSecTime'}) {
+               $SubSec = $Info->{'SubSecTime'};
+            }
          }
          # If advanced logic levels are enabled,
          elsif ($Logic > 0) {
-            # Start with examining parent folder for valid date.
+            # Start by examining parent folder for valid date.
             # Separate everything into its pieces.
             my ($Vol, $Path, $File) = File::Spec->splitpath( $FileAbs );
             my @Dirs = File::Spec->splitdir( $Path );
@@ -206,12 +222,18 @@ sub Process {
                next;
             }
          }
+         elsif ($Logic > 1) {
+            # Then check the file's mtime for valid date.
+            my $Mtime = ${stat $FileAbs}[9];
+            $ImgDate = Date::Manip::ParseDateString( "epoch $Mtime" );
+            if ($ImgDate) {
+               
+               # If we found a date jump out of the loop.
+               last;
+            }
+         }   
          # Not able to read date from metadata.
          else {
-            # Getting the mtime does not work reliably.
-            #$ImgDate = ${stat $FileAbs}[9];
-            #print "Mtime = $ImgDate\n";
-            
             # So the safest thing is to just skip the file for now.
             if ($Verbose) { 
                print "$FileAbs: Unable to read date from metadata, skipping.\n";
@@ -231,6 +253,10 @@ sub Process {
          # Adjust 'ResearchInMotion' to just 'RIM'
          if ($Make =~ /^ResearchInMotion/ ) {
              $Make = 'RIM';
+         }
+         # Adjust 'Nikon*' to just 'Nikon'
+         if ($Make =~ /^Nikon/ ) {
+             $Make = 'Nikon';
          }
 
          my $Model = $Info->{'Model'} if $Info->{'Model'};
@@ -256,7 +282,7 @@ sub Process {
          }
          
          # Reformat the dates into the date/time string we want.
-         my $DateFile = UnixDate( $ImgDate, $DateFileString );
+         my $DateFile = UnixDate( $ImgDate, $DateFileString ) . '.' . sprintf( "%02d", $SubSec );
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
          # Separate the filename from the extension.
          my ($Junk, $File, $Ext) = fileparse( $FileName, qr/\.[^.]*/ );
