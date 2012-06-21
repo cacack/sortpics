@@ -265,6 +265,18 @@ sub Process {
          # Remove any spaces.
          $Model =~ s/ //g;
          my $FileAppendString;
+
+	 unless ($Make || $Model) {
+            # Don't have either so try alternate tags
+	    if ($Info->{'Information'}) {
+	       my $Tag = $Info->{'Information'};
+	       my @Pieces = split( ' ', $Tag );
+	       if ($Pieces[0] =~ /^Kodak/i) {
+	          $Make = $Pieces[0];
+	          $Model = $Pieces[1];
+	       }
+	    }
+	 }
          
          # If the Model information already contains Make
          if ($Model && $Model =~ /^$Make/) {
