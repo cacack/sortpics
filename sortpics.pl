@@ -4,6 +4,7 @@
 # 
 # Written by Chris Clonch <chris@theclonchs.com>.  See man page using -M, --man
 # for copyright and license notice.
+# vim: set ts=3 sw=3 expandtab:
 ################################################################################
 use strict;
 require 5.010.000;
@@ -56,13 +57,17 @@ my @FileNamePatterns = (
 #------------------------------------------------------------------------------
 # Commandline args
 #------------------------------------------------------------------------------
-my ($Cleanup, $Copy, $Debug, $DryRun, $Force, $Help, $Logic, $Man, $Move, $Recursive, $Verbose);
+my (
+   $Cleanup, $Copy, $Debug, $Delta, $DryRun, $Force, $Help, $Logic, $Man, $Move,
+   $Recursive, $Verbose,
+);
 
 # Process commandline arguments.
 GetOptions (
    'c|copy'       => \$Copy,
    'C|cleanup'    => \$Cleanup,
    'd|debug+'     => sub { $Debug++; $Verbose++; },
+   'delta=s'      => \$Delta,
    'D|dry-run'    => \$DryRun,
    'f|force'      => \$Force,
    'h|help'       => \$Help,
@@ -266,17 +271,17 @@ sub Process {
          $Model =~ s/ //g;
          my $FileAppendString;
 
-	 unless ($Make || $Model) {
+         unless ($Make || $Model) {
             # Don't have either so try alternate tags
-	    if ($Info->{'Information'}) {
-	       my $Tag = $Info->{'Information'};
-	       my @Pieces = split( ' ', $Tag );
-	       if ($Pieces[0] =~ /^Kodak/i) {
-	          $Make = $Pieces[0];
-	          $Model = $Pieces[1];
-	       }
-	    }
-	 }
+            if ($Info->{'Information'}) {
+               my $Tag = $Info->{'Information'};
+               my @Pieces = split( ' ', $Tag );
+               if ($Pieces[0] =~ /^Kodak/i) {
+                  $Make = $Pieces[0];
+                  $Model = $Pieces[1];
+               }
+            }
+         }
          
          # If the Model information already contains Make
          if ($Model && $Model =~ /^$Make/) {
@@ -293,6 +298,26 @@ sub Process {
             $FileAppendString = 'Unknown';
          }
          
+         #--------------------------------
+         # Apply date/time delta
+         #--------------------------------
+         if ($Delta) {
+            my $DeltaValid = Date::Manip::ParseDateDelta( $Delta );
+            if ($DeltaValid) {
+               my $Err;
+               $ImgDate = Date::Manip::DateCalc( $ImgDate, $DeltaValid, \$Err, 0 );
+               if ($Err && $Debug) {
+                  print "Date calculation error: $!\n";
+               }
+            }
+            elsif ($Debug) {
+               print "Delta not valid.\n";
+            }
+         }
+         
+         #--------------------------------
+         # Assemble new filename
+         #--------------------------------
          # Reformat the dates into the date/time string we want.
          my $DateFile = UnixDate( $ImgDate, $DateFileString ) . '.' . sprintf( "%02d", $SubSec );
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
