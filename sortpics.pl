@@ -162,8 +162,12 @@ sub Process {
       my $Supported = Image::ExifTool::GetFileType( $FileAbs );
       if ($Supported) {
          if ($Debug) { print "$FileAbs: $Supported\n"; }
-         # Read all of the metadata from the file.
-         my $Info = Image::ExifTool::ImageInfo( $FileAbs );
+         # Create a new Image::ExifTool object.
+         my $ImgData = new Image::ExifTool;
+         # Extract all of the tags from the file.
+         $ImgData->ExtracInfo( $FileAbs );
+         # Read all of the metadata.
+         my $Info = $ImgData->GetInfo( );
          # Output all of the metadata if -dd
          if ($Debug > 1) {
             foreach my $Key (sort keys %$Info) {
@@ -171,7 +175,7 @@ sub Process {
             }
          }
          
-         my $ImgDate;
+         my ($ImgDate, $DateTag);
          my $SubSec = 0;
          # Check for metadata 
          if ($Info->{'DateTimeOriginal'}) {
@@ -301,8 +305,9 @@ sub Process {
          #--------------------------------
          # Apply date/time delta
          #--------------------------------
+         my $DeltaValid;
          if ($Delta) {
-            my $DeltaValid = Date::Manip::ParseDateDelta( $Delta );
+            $DeltaValid = Date::Manip::ParseDateDelta( $Delta );
             if ($DeltaValid) {
                my $Err;
                $ImgDate = Date::Manip::DateCalc( $ImgDate, $DeltaValid, \$Err, 0 );
@@ -436,6 +441,21 @@ sub Process {
             if ($Verbose) { print "Copying $FileName -> $NewFileAbs\n"; }
             unless ($DryRun) { copy( $FileAbs, $NewFileAbs ); }
          }
+         
+         if ($DeltaValid and not $DryRun) {
+            if (Image::ExifTool::CanWrite( $NewFileAbs )) {
+               # Save calculated date/time back to file.
+               if ($Debug) {
+                  print "Saving new date/time to $NewFileAbs.\n";
+               }
+               # Create a new Image::ExifTool object.
+               my $ImgData = new Image::ExifTool;
+               # Extract all of the tags from the file.
+               $ImgData->ExtracInfo( $NewFileAbs );
+               
+            }
+         }
+               
 
       } # END if ($Supported)
 
