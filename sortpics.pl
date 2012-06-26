@@ -165,7 +165,7 @@ sub Process {
          # Create a new Image::ExifTool object.
          my $ImgData = new Image::ExifTool;
          # Extract all of the tags from the file.
-         $ImgData->ExtracInfo( $FileAbs );
+         $ImgData->ExtractInfo( $FileAbs );
          # Read all of the metadata.
          my $Info = $ImgData->GetInfo( );
          # Output all of the metadata if -dd
@@ -182,11 +182,29 @@ sub Process {
             # Parse it.
             $ImgDate = Date::Manip::ParseDate( $Info->{'DateTimeOriginal'} );
             # Parse subsec timing if its there.
-            if ($Info->{'SubSecTimeOriginal'}) {
+            # Parse subsec timing if its there.
+            if ($Info->{'SubSecTime'}) {
+               $SubSec = $Info->{'SubSecTime'};
+            }
+            elsif ($Info->{'SubSecTimeOriginal'}) {
                $SubSec = $Info->{'SubSecTimeOriginal'};
             }
-            elsif ($Info->{'SubSecTime'}) {
+            elsif ($Info->{'SubSecDigitized'}) {
+               $SubSec = $Info->{'SubSecDigitized'};
+            }
+         }
+         elsif ($Info->{'DateTimeDigitized'}) {
+            # Parse it.
+            $ImgDate = Date::Manip::ParseDate( $Info->{'DateTimeDigitized'} );
+            # Parse subsec timing if its there.
+            if ($Info->{'SubSecTime'}) {
                $SubSec = $Info->{'SubSecTime'};
+            }
+            elsif ($Info->{'SubSecTimeOriginal'}) {
+               $SubSec = $Info->{'SubSecTimeOriginal'};
+            }
+            elsif ($Info->{'SubSecDigitized'}) {
+               $SubSec = $Info->{'SubSecDigitized'};
             }
          }
          # If CreateDate is in the metadata.
@@ -194,11 +212,14 @@ sub Process {
             # Parse it.
             $ImgDate = Date::Manip::ParseDate( $Info->{'CreateDate'} );
             # Parse subsec timing if its there.
-            if ($Info->{'SubSecTimeOriginal'}) {
+            if ($Info->{'SubSecTime'}) {
+               $SubSec = $Info->{'SubSecTime'};
+            }
+            elsif ($Info->{'SubSecTimeOriginal'}) {
                $SubSec = $Info->{'SubSecTimeOriginal'};
             }
-            elsif ($Info->{'SubSecTime'}) {
-               $SubSec = $Info->{'SubSecTime'};
+            elsif ($Info->{'SubSecDigitized'}) {
+               $SubSec = $Info->{'SubSecDigitized'};
             }
          }
          # If advanced logic levels are enabled,
@@ -305,11 +326,13 @@ sub Process {
          #--------------------------------
          # Apply date/time delta
          #--------------------------------
-         my $DeltaValid;
+         my ($DeltaValid, $ImgDateOrig);
          if ($Delta) {
             $DeltaValid = Date::Manip::ParseDateDelta( $Delta );
             if ($DeltaValid) {
                my $Err;
+               # Save the original date/time
+               $ImgDateOrig = $ImgDate;
                $ImgDate = Date::Manip::DateCalc( $ImgDate, $DeltaValid, \$Err, 0 );
                if ($Err && $Debug) {
                   print "Date calculation error: $!\n";
@@ -442,19 +465,46 @@ sub Process {
             unless ($DryRun) { copy( $FileAbs, $NewFileAbs ); }
          }
          
+         #----------------------------------------------------------------------
+         # Save calculated date/time back to file.
+         #----------------------------------------------------------------------
          if ($DeltaValid and not $DryRun) {
+            # Verify we can write tags to the file
             if (Image::ExifTool::CanWrite( $NewFileAbs )) {
-               # Save calculated date/time back to file.
-               if ($Debug) {
-                  print "Saving new date/time to $NewFileAbs.\n";
-               }
+               if ($Debug) { print "Saving new date/time to $NewFileAbs.\n"; }
                # Create a new Image::ExifTool object.
                my $ImgData = new Image::ExifTool;
                # Extract all of the tags from the file.
-               $ImgData->ExtracInfo( $NewFileAbs );
+               $ImgData->ExtractInfo( $NewFileAbs );
+               # Read all of the metadata.
+               my $Info = $ImgData->GetInfo( );
                
-            }
-         }
+               # Find all tags with Date or Time in their name
+               foreach my $Tag (keys $Info) {
+                  if ($Tag =~ 'Date' or $Tag =~ 'Time') {
+                     # Parse the date/time.
+                     my $ImgDateNew = Date::Manip::ParseDate( $Info->{$Tag} );
+                     # Only work on date/times that equal the original date/time
+                     if (Date::Manip::Date_Cmp( $ImgDateOrig, $ImgDateNew )) {
+                        # Format the date/time into the EXIF format
+                        my $NewDateFmt = Date::Manip::UnixDate( $ImgDateNew, "%Y:%m:%d %H:%M:%S" );
+                        if ($Debug) { print "Setting tag $Tag to $ImgDateNew.\n"; }
+                        # Set a new value and capture any error message.
+                        my ($Rc, $Err) = $ImgData->SetNewValue( $Tag, $NewDateFmt);
+                        if ($Err) {
+                           warn "Error setting $Tag to $ImgDateNew: $Err\n";
+                        }
+                     }
+                  }
+               }
+               # Write the info into the file.
+               my ($Rc, $Err) = $ImgData->WriteInfo( $NewFileAbs );
+               if ($Err) {
+                  warn "Error writing metadata to $NewFileAbs: $Err\n";
+               }
+
+            } # END if (..CanWrite( $NewFileAbs ))
+         } # END if ($DeltaValid and not $DryRun)
                
 
       } # END if ($Supported)
@@ -498,6 +548,7 @@ sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
  Options:
    -C, --cleanup        delete non-picture files and empty directories
    -d, --debug          enable debug output
+   --delta DELTA        apply DELTA to the date/time             
    -D, --dry-run        perform a trial run without making any changes
    -f, --force          force deletion of duplicate files, rename others
    -h, --help           print a brief help message
@@ -536,6 +587,13 @@ directories as it processes files.
 
 Enable debug output.  This causes more information to be outputted which may
 be useful in debugging the script.
+
+=item B<--delta DELTA>
+
+Applies a valid Date::Manip delta specified in DELTA to the date/time found for
+each file.  This allows the date/time to be adjusted in cases where the values
+found are wrong.  Date::Manip supports natural language expressions such as
+"+ 1 year" or "subtract 1 month, 8 days".
 
 =item B<D, --dry-run>
 
