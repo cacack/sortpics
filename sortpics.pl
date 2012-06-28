@@ -531,7 +531,7 @@ sub Process {
                      warn "Unable to replace $NewFileAbs: $!\n";
                      warn "Recovering from backup copy.\n";
                      move( $NewFileAbs . '.bak', $NewFileAbs ) or
-                        warn "Problems moving backup copy back: $!\n";
+                        die "Problems moving backup copy back: $!\n";
                   }
                   unlink $TempFile;
                }
