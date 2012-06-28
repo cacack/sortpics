@@ -21,6 +21,7 @@ use File::Copy;
 use File::Find;
 use File::Path;
 use File::Spec;
+use File::Temp;
 use Getopt::Long qw( :config bundling pass_through );
 use Image::ExifTool;
 use Pod::Usage;
@@ -479,36 +480,68 @@ sub Process {
                # Read all of the metadata.
                my $Info = $ImgData->GetInfo( );
                
+               my @DateTimeTags = (
+                  qr/DateTimeOriginal/,
+                  qr/DateTimeDigitized/,
+                  qr/CreateDate/,
+               );
                # Find all tags with Date or Time in their name
                foreach my $Tag (keys $Info) {
-                  if ($Tag =~ 'Date' or $Tag =~ 'Time') {
+                  if ($Tag ~~ @DateTimeTags) {
                      # Parse the date/time.
                      my $ImgDateNew = Date::Manip::ParseDate( $Info->{$Tag} );
                      # Only work on date/times that equal the original date/time
-                     if (Date::Manip::Date_Cmp( $ImgDateOrig, $ImgDateNew )) {
+                     if (Date::Manip::Date_Cmp( $ImgDateOrig, $ImgDateNew ) == 0) {
                         # Format the date/time into the EXIF format
-                        my $NewDateFmt = Date::Manip::UnixDate( $ImgDateNew, "%Y:%m:%d %H:%M:%S" );
-                        if ($Debug) { print "Setting tag $Tag to $ImgDateNew.\n"; }
+                        my $NewDateFmt = Date::Manip::UnixDate( $ImgDate, "%Y:%m:%d %H:%M:%S" );
+                        if ($Tag =~ /SubSec/) { $NewDateFmt .= $SubSec; }
+                        if ($Debug) { print "Setting tag $Tag to $NewDateFmt.\n"; }
                         # Set a new value and capture any error message.
                         my ($Rc, $Err) = $ImgData->SetNewValue( $Tag, $NewDateFmt);
                         if ($Err) {
-                           warn "Error setting $Tag to $ImgDateNew: $Err\n";
+                           warn "Error setting $Tag to $NewDateFmt: $Err\n";
                         }
+                     }
+                     elsif ($Debug > 1) {
+                        print "Original date/time $ImgDateOrig not equal to new $ImgDateNew.\n";
                      }
                   }
                }
-               # Write the info into the file.
-               my ($Rc, $Err) = $ImgData->WriteInfo( $NewFileAbs );
-               if ($Err) {
-                  warn "Error writing metadata to $NewFileAbs: $Err\n";
+               # Write the info into a temp file.
+               my $TempFile = File::Temp::tmpnam( );
+               my $Success = $ImgData->WriteInfo( $NewFileAbs, $TempFile );
+               my $ErrMsg = $ImgData->GetValue('Error');
+               my $WarnMsg = $ImgData->GetValue('Warning');
+               unless ($Success) {
+                  warn "Error writing metadata to $TempFile: $ErrMsg\n";
+               }
+               elsif ($WarnMsg and $Debug) {
+                  warn "Warning while writing metadata to $TempFile: $WarnMsg\n";
+               }
+               
+               # File::Copy may leave a partial destination file if problems
+               # arise so be OCD and do a shell game to ensure file safety.
+               my $M1 = move( $NewFileAbs, $NewFileAbs . '.bak' );
+               if ($M1) {
+                  my $M2 = move( $TempFile, $NewFileAbs );
+                  if ($M2) {
+                     unlink $NewFileAbs . '.bak';
+                  }
+                  else {
+                     warn "Unable to replace $NewFileAbs: $!\n";
+                     warn "Recovering from backup copy.\n";
+                     move( $NewFileAbs . '.bak', $NewFileAbs ) or
+                        warn "Problems moving backup copy back: $!\n";
+                  }
+                  unlink $TempFile;
                }
 
             } # END if (..CanWrite( $NewFileAbs ))
+            else {
+               warn "$FileName: Unable to adjust date/time metadata for format $Supported.\n";
+            }
          } # END if ($DeltaValid and not $DryRun)
-               
-
       } # END if ($Supported)
-
       else {
          if ($Verbose) { print "$FileName: File type is not supported, skipping.\n"; }
       }
