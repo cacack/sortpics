@@ -46,6 +46,8 @@ my @FileNamePatterns = (
    '.picasa.ini',
    'Picasa.ini',
    'ZbThumbnail.info',
+   'MAVICA.HTM',
+   qr/MVC.*\.411/,
 );
 
 #-------------------------------------------------------------------------------
@@ -237,57 +239,57 @@ sub Process {
                $SubSec = $Info->{'SubSecDigitized'};
             }
          }
-         
-         #----------------------------------------------------------------------
-         # Advanced date/time parsing logic
-         #----------------------------------------------------------------------
-         elsif ($Logic > 0) {
-            # Start by examining parent folder for valid date.
-            # Separate everything into its pieces.
-            my ($Vol, $Path, $File) = File::Spec->splitpath( $SrcFileAbs );
-            my @Dirs = File::Spec->splitdir( $Path );
-            # Start with the current directory and work our way up.
-            foreach my $Dir (reverse @Dirs) {
-               # Cleanup the directory a bit.
-               $Dir =~ s/_//g;
-               $Dir =~ s/-//g;
-               $Dir =~ s/ //g;
-               # Parse it
-               $ImgDate = Date::Manip::ParseDate( $Dir );
+         else {
+            #-------------------------------------------------------------------
+            # Advanced date/time parsing logic
+            #-------------------------------------------------------------------
+            if ($Logic > 0) {
+               # Start by examining parent folder for valid date.
+               # Separate everything into its pieces.
+               my ($Vol, $Path, $File) = File::Spec->splitpath( $SrcFileAbs );
+               my @Dirs = File::Spec->splitdir( $Path );
+               # Start with the current directory and work our way up.
+               foreach my $Dir (reverse @Dirs) {
+                  # Cleanup the directory a bit.
+                  $Dir =~ s/_//g;
+                  $Dir =~ s/-//g;
+                  $Dir =~ s/ //g;
+                  # Parse it
+                  $ImgDate = Date::Manip::ParseDate( $Dir );
+                  if ($ImgDate) {
+                     # If we found a date jump out of the loop.
+                     last;
+                  }
+               }
+               # Now test the date.
                if ($ImgDate) {
+                  # This should test how complete the date we found is.
+                  # Date::Manip::Date::complete looks promising.
+               }
+               #else {
+                  #warn "$SrcFileAbs: Unable to determine date from directory, skipping.\n";
+                  #if ($Debug) { print "Date = $ImgDate\n"; }
+                  #next;
+               #}
+            }
+            if ($Logic > 1) {
+               # Then check the file's mtime for valid date.
+               my @Stats = stat $SrcFileAbs;
+               my $Mtime = $Stats[9];
+               $ImgDate = Date::Manip::ParseDateString( "epoch $Mtime" );
+               if ($ImgDate) {
+                  #print "$Mtime $ImgDate\n";
                   # If we found a date jump out of the loop.
-                  last;
+                  #last;
                }
             }
-            # Now test the date.
-            if ($ImgDate) {
-               # This should test how complete the date we found is.
-               # Date::Manip::Date::complete looks promising.
-            }
-            else {
-               warn "$SrcFileAbs: Unable to determine date from directory, skipping.\n";
-               if ($Debug) { print "Date = $ImgDate\n"; }
+            unless ($ImgDate) {
+               # Not able to read date from metadata.
+               # So the safest thing is to just skip the file for now.
+               warn "$SrcFileAbs: Unable to read date from metadata, skipping.\n";
+               $Counts{'skip'}++;
                next;
             }
-         }
-         elsif ($Logic > 1) {
-            # Then check the file's mtime for valid date.
-            my $Mtime = ${stat $SrcFileAbs}[9];
-            $ImgDate = Date::Manip::ParseDateString( "epoch $Mtime" );
-            if ($ImgDate) {
-               
-               # If we found a date jump out of the loop.
-               last;
-            }
-         }   
-         # Not able to read date from metadata.
-         else {
-            # So the safest thing is to just skip the file for now.
-            if ($Verbose) { 
-               print "$SrcFileAbs: Unable to read date from metadata, skipping.\n";
-            }
-            $Counts{'skip'}++;
-            next;
          }
          
          #----------------------------------------------------------------------
@@ -419,11 +421,8 @@ sub Process {
                      # Delete the file.
                      unlink $SrcFileAbs or print "$SrcFileAbs: Unable to delete: $!\n";
                   }
-                  # Otherwise if we're being chatty, inform the user we're
-                  # leaving the file be..
-                  elsif ($Verbose) {
-                     print "$SrcFileAbs: Destination file already exists, skipping.\n";
-                  }
+                  # Leave the file be..
+                  warn "$SrcFileAbs: Destination file already exists, skipping.\n";
                   $Dupe = 1;
                   # Jump out of the while loop.
                   last;
@@ -441,7 +440,7 @@ sub Process {
                # Otherwise the safer thing is to leave it be to let a human
                # deal with it.
                else {
-                  print "$SrcFileAbs: Destination file with same name, skipping.\n";
+                  warn "$SrcFileAbs: Destination file with same name, skipping.\n";
                   $Skip = 1;
                   # Jump out of the while loop.
                   last;
@@ -578,7 +577,7 @@ sub Process {
          } # END if ($DeltaValid and not $DryRun)
       } # END if ($Supported)
       else {
-         if ($Verbose) { print "$SrcFileName: File type is not supported, skipping.\n"; }
+         warn "$SrcFileName: File type is not supported, skipping.\n";
       }
 
    } #END if (-f $SrcFileAbs)
@@ -587,13 +586,11 @@ sub Process {
       # If we were told to cleanup.
       if ($Cleanup && not $DryRun) {
          my $Rc = rmdir( $SrcFileAbs );
-         if ($Verbose) {
-            if ($Rc) {
-               print "Delete directory $SrcFileAbs\n";
-            }
-            else {
-               print "Unable to delete directory $SrcFileAbs: $!\n";
-            }
+         if ($Rc) {
+            if ($Verbose) { print "Delete directory $SrcFileAbs\n"; }
+         }
+         else {
+            warn "Unable to delete directory $SrcFileAbs: $!\n";
          }
       }
    }
