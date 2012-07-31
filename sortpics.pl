@@ -56,8 +56,8 @@ my @FileNamePatterns = (
 # Commandline args
 #-------------------------------------------------------------------------------
 my (
-   $Cleanup, $Copy, $Debug, $Delta, $DryRun, $Force, $Help, $Logic, $Man, $Move,
-   $Recursive, $Verbose,
+   $Cleanup, $Copy, $Debug, $Delta, $DryRun, $Force, $Help, $Increment, $Logic,
+   $Man, $Move, $Recursive, $Verbose,
 );
 
 # Process commandline arguments.
@@ -69,6 +69,7 @@ GetOptions (
    'D|dry-run'    => \$DryRun,
    'f|force'      => \$Force,
    'h|help'       => \$Help,
+   'i|increment'  => \$Increment,
    'l|logic=i'    => \$Logic,
    'M|man'        => \$Man,
    'm|move'       => \$Move,
@@ -431,8 +432,8 @@ sub Process {
                   last;
                }
                
-               # If forced, increment the filename.  Lather, rinse, repeat.
-               if ($Force) {
+               # If we're told to increment, do it.  Lather, rinse, repeat.
+               if ($Increment) {
                   $Count++;
                   my $Num = sprintf( "%04d", $Count );
                   $DestFileAbs = File::Spec->catfile(
@@ -606,7 +607,7 @@ __END__
 
 =head1 NAME
 
-sortpics.pl - Sort pictures using EXIF metadata information.
+sortpics.pl - Sort pictures using EXIF metadata information and more.
 
 =head1 SYNOPSIS
 
@@ -619,6 +620,7 @@ sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
    -D, --dry-run           perform a trial run without making any changes
    -f, --force             force deletion of duplicate files, rename others
    -h, --help              print a brief help message
+   -i, --increment         append incremented counter to files with same names
    -l, --logic INTEGER     set advanced logic to INTEGER
    -M, --man               prints a detailed man page
    -m, --move              move files instead of just copying them
@@ -683,18 +685,20 @@ happen during a real run.
    
 =item B<-f, --force>
 
-Enables force mode.  In particular, this causes 2 major changes in the scripts
-execution.  One, duplicate files (identical hashes) are deleted instead of being
-left alone and two, files with the same filename have an incremented number
-appended to them.  In the first instance, SHA1 hashes matching pretty much
+Enables force mode.  This causes duplicate files (identical hashes) to be
+deleted instead of being left alone.  SHA1 hashes matching pretty much
 guarantees the files are identical but the script plays it safe by leaving files
-be.  However, in the second case, the script can not guarantee files with the
-same names will end up in proper cronological order.  Since both actions may not
-be the safest path they are left to the user to choose.
+be.  This allows for the removal of such files.
 
 =item B<-h, --help>
 
 Print a brief help message describing the options of the script and exits.
+
+=item B<-i, --increment>
+
+Append a incremented counter to files that have the same name, but different
+hashes.  Without this option, files will be left alone since chronological order
+can not be guaranteed.
 
 =item B<-l, --logic NUMBER>
 
