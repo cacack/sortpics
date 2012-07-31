@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 ################################################################################
-# sortpics.pl - Sort pictures using EXIF metadata information.
+# sortpics.pl - Sort pictures using EXIF metadata information and more.
 # 
 # Written by Chris Clonch <chris@theclonchs.com>.  See man page using -M, --man
 # for copyright and license notice.
@@ -36,6 +36,8 @@ use Pod::Usage;
 
 # The date string we will use to rename the files.
 my $DateFileString = "%Y%m%d-%H%M%S";
+# Date::Manip doesn't currently support sub-seconds so choose to append it.
+my $AppendSubSec = 1;
 # The date string we will use to build the directories under the dest dir.
 my $DatePathString = "%Y/%m/%Y-%m-%d";
 # List of filename patterns to outright delete.  I've found deleting these to be
@@ -371,7 +373,8 @@ sub Process {
          # Assemble new filename
          #----------------------------------------------------------------------
          # Reformat the dates into the date/time string we want.
-         my $DateFile = UnixDate( $ImgDate, $DateFileString ) . '.' . sprintf( "%02d", $SubSec );
+         my $DateFile = UnixDate( $ImgDate, $DateFileString );
+         if ($AppendSubSec) { $DateFile .= '.' . sprintf( "%02d", $SubSec ); }
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
          # Separate the filename from the extension.
          my ($Junk, $File, $Ext) = fileparse( $SrcFileName, qr/\.[^.]*/ );
