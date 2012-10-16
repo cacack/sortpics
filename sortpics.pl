@@ -30,15 +30,11 @@ use Pod::Usage;
 # MAIN
 ################################################################################
 
-#-------------------------------------------------------------------------------
-# Items worth adjusting for your needs...
-#-------------------------------------------------------------------------------
-
-# The date string we will use to rename the files.
-my $DateFileString = "%Y%m%d-%H%M%S";
+# The default date string we will use to rename the files.
+my $FilePrefixString = "%Y%m%d-%H%M%S";
 # Date::Manip doesn't currently support sub-seconds so choose to append it.
 my $AppendSubSec = 1;
-# The date string we will use to build the directories under the dest dir.
+# The default date string we will use to build the directories under the dest dir.
 my $DatePathString = "%Y/%m/%Y-%m-%d";
 # List of filename patterns to outright delete.  I've found deleting these to be
 # benign.
@@ -56,25 +52,29 @@ my @FileNamePatterns = (
 # Commandline args
 #-------------------------------------------------------------------------------
 my (
-   $Cleanup, $Copy, $Debug, $Delta, $DryRun, $Force, $Help, $Increment, $Logic,
-   $Man, $Move, $Recursive, $Verbose,
+   $Cleanup, $Copy, $Debug, $Delta, $DryRun, $FileSuffixString, $Force, $Help,
+   $Increment, $Logic, $Man, $Move, $Recursive, $Verbose,
 );
 
 # Process commandline arguments.
 GetOptions (
-   'c|copy'       => \$Copy,
-   'C|cleanup'    => \$Cleanup,
-   'd|debug+'     => sub { $Debug++; $Verbose++; },
-   'delta=s'      => \$Delta,
-   'D|dry-run'    => \$DryRun,
-   'f|force'      => \$Force,
-   'h|help'       => \$Help,
-   'i|increment'  => \$Increment,
-   'l|logic=i'    => \$Logic,
-   'M|man'        => \$Man,
-   'm|move'       => \$Move,
-   'r|recursive'  => \$Recursive,
-   'v|verbose+'   => \$Verbose,
+   'c|copy'          => \$Copy,
+   'C|cleanup'       => \$Cleanup,
+   'd|debug+'        => sub { $Debug++; $Verbose++; },
+   'delta=s'         => \$Delta,
+   'D|dry-run'       => \$DryRun,
+   'f|force'         => \$Force,
+   'h|help'          => \$Help,
+   'i|increment'     => \$Increment,
+   'l|logic=i'       => \$Logic,
+   'M|man'           => \$Man,
+   'm|move'          => \$Move,
+   'r|recursive'     => \$Recursive,
+   'v|verbose+'      => \$Verbose,
+   'string-dir=s'    => \$DatePathString,
+   'string-file-prefix=s'   => \$FilePrefixString,
+   'string-file-suffix=s'   => \$FileSuffixString,
+   'nosubsec'        => sub { $AppendSubSec = 0; },
 ) or pod2usage( -verbose => 0, -exitval => 1 );
 
 pod2usage( -verbose => 0, -exitval => 0 ) if $Help;
@@ -322,7 +322,7 @@ sub Process {
          # Remove any spaces.
          $Model =~ s/ //g;
          my $FileAppendString;
-
+         
          unless ($Make || $Model) {
             # Don't have either so try alternate tags
             if ($Info->{'Information'}) {
@@ -350,6 +350,11 @@ sub Process {
             $FileAppendString = 'Unknown';
          }
          
+         if (defined $FileSuffixString) {
+            # Use the user specified suffix.
+            $FileAppendString = $FileSuffixString;
+         }
+         
          #----------------------------------------------------------------------
          # Apply date/time delta
          #----------------------------------------------------------------------
@@ -373,8 +378,9 @@ sub Process {
          #----------------------------------------------------------------------
          # Assemble new filename
          #----------------------------------------------------------------------
+         my $DestFileName;
          # Reformat the dates into the date/time string we want.
-         my $DateFile = UnixDate( $ImgDate, $DateFileString );
+         my $DateFile = UnixDate( $ImgDate, $FilePrefixString );
          if ($AppendSubSec) { $DateFile .= '.' . sprintf( "%02d", $SubSec ); }
          my $DatePath = UnixDate( $ImgDate, $DatePathString );
          # Separate the filename from the extension.
@@ -384,7 +390,12 @@ sub Process {
          # Build path.
          my $DestPath = File::Spec->catdir( $DestBase, $DatePath );
          # Build filename (without extension in case we have to append more).
-         my $DestFileName = $DateFile . '_' . $FileAppendString;
+         if ($FileAppendString) {
+            $DestFileName = $DateFile . '_' . $FileAppendString;
+         }
+         else {
+            $DestFileName = $DateFile;
+         }
          # Build absoulte file path.
          my $DestFileAbs = File::Spec->catfile( $DestPath, $DestFileName.$Ext );
          
@@ -624,7 +635,11 @@ sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
    -l, --logic INTEGER     set advanced logic to INTEGER
    -M, --man               prints a detailed man page
    -m, --move              move files instead of just copying them
+   --nosubsec              disable appending sub-seconds to filename
    -r, --recursive         recurse into directories
+   --string-dir            alter the generated directory path 
+   --string-file-prefix    alter the generated filename prefix
+   --string-file-suffix    alter the generated filename suffix
    -v, --verbose           enable output
 
 =head1 DESCRIPTION
@@ -723,11 +738,31 @@ argument first to verify what will happen prior to running without it.
 
 Output a detailed help message formatted as a man page.
 
+=item B<--nosubsec>
+
+Disable appending sub-second time to the filename.
+
 =item B<-r, --recursive>
 
 This causes the script to process the SOURCE(S) recursively.  This also causes
 the script to operate in a manner similar to "find -depth" so that it works from
 the bottom up.
+
+=item B<--string-file-prefix STRING>
+
+This can be used to change the filename prefix from the default %Y%m%d-%H%M%S.
+Any valid Date::Manip::Date printf directive is supported.
+
+=item B<--string-file-suffix STRING>
+
+This can be used to change the filename suffix from the default camera make and 
+model.  Variables $Make and $Model may be used, which will eval'ed into their
+correct values.
+
+=item B<--string-dir STRING>
+
+This can be used to change the generated directory path from the default of
+%Y/%m/%Y-%m-%d.  Any valid Date::Manip::Date printf directive is supported.
 
 =item B<-v, --verbose>
 
@@ -754,9 +789,9 @@ The following modules are used which are not part of the core perl distribution.
 
 =head1 BUGS AND LIMITATIONS
 
-When multiple destination files with the same name are found while using -d,
---dry-run and -f, --force options at the same time the script will not correctly
-increment the counter used in the new filenames.
+When multiple destination files with the same name are found while using dry-run
+and force options at the same time the script will not correctly increment the
+counter used in the new filenames.
 
 Please report problems to the author.  Patches are welcome.
 
