@@ -47,13 +47,32 @@ my @FileNamePatterns = (
    'MAVICA.HTM',
    qr/MVC.*\.411/,
 );
-
+# List of extension patterns for RAW pictures.
+my @RawExtPatterns = (
+   qr/arw/, # Sony
+   qr/crw/, # Canon
+   qr/cr2/, # Canon
+   qr/dng/, # Adobe, Leica
+   qr/mrw/, # Minolta
+   qr/nef/, # Nikon
+   qr/nrw/, # Nikon
+   qr/orf/, # Olympus
+   qr/pef/, # Pentax
+   qr/ptx/, # Pentax
+   qr/raw/, # Panasonic, Leica
+   qr/rw2/, # Panasonic
+   qr/rwl/, # Leica
+   qr/srf/, # Sony
+   qr/sr2/, # Sony
+   qr/srw/, # Samsung
+   qr/x3f/, # Sigma
+);
 #-------------------------------------------------------------------------------
 # Commandline args
 #-------------------------------------------------------------------------------
 my (
-   $Cleanup, $Copy, $Debug, $Delta, $DryRun, $FileSuffixString, $Force, $Help,
-   $Increment, $Logic, $Man, $Move, $Recursive, $Verbose,
+   $Cleanup, $Copy, $Debug, $Delta, $DestRawBase, $DryRun, $FileSuffixString,
+   $Force, $Help, $Increment, $Logic, $Man, $Move, $Recursive, $Verbose,
 );
 
 # Process commandline arguments.
@@ -70,6 +89,7 @@ GetOptions (
    'M|man'           => \$Man,
    'm|move'          => \$Move,
    'r|recursive'     => \$Recursive,
+   'R|raw=s'         => \$DestRawBase,
    'v|verbose+'      => \$Verbose,
    'string-dir=s'    => \$DatePathString,
    'string-file-prefix=s'   => \$FilePrefixString,
@@ -90,6 +110,7 @@ if ($#ARGV < 1) {
 # The last directory is our target.
 my $DestBase = pop @ARGV;
 $DestBase = File::Spec->rel2abs( $DestBase ) ;
+my $DestPhotoBase = $DestBase;
 # The remaining are our source directories.
 my @Sources = @ARGV;
 
@@ -107,6 +128,12 @@ foreach my $Source (@Sources) {
    }
    else {
       die "Source \'$Source\' must be a directory or file.\n";
+   }
+}
+if ($DestRawBase) {
+   $DestRawBase = File::Spec->rel2abs( $DestRawBase ) ;
+   unless (-d $DestRawBase && -w $DestRawBase) {
+      die "Raw destination directory '$DestRawBase' does not exist or is not writable.\n";
    }
 }
 
@@ -387,6 +414,18 @@ sub Process {
          my ($Junk, $File, $Ext) = fileparse( $SrcFileName, qr/\.[^.]*/ );
          # Force the extension to lowercase.
          $Ext = lc $Ext;
+	 # If the extension matches a RAW type,
+	 if ($Ext ~~ @RawExtPatterns) {
+	    # And if we're handling RAW files differently,
+            if ($DestRawBase) {
+	       # Set the destination to the RAW one.
+	       $DestBase = $DestRawBase;
+	    }
+         }
+	 # Otherwise, set ensure its set to the original.
+	 else {
+            $DestBase = $DestPhotoBase;
+	 }
          # Build path.
          my $DestPath = File::Spec->catdir( $DestBase, $DatePath );
          # Build filename (without extension in case we have to append more).
