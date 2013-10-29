@@ -679,6 +679,7 @@ sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
    -m, --move              move files instead of just copying them
    --nosubsec              disable appending sub-seconds to filename
    -r, --recursive         recurse into directories
+   -R, --raw               raw file destination
    --string-dir            alter the generated directory path 
    --string-file-prefix    alter the generated filename prefix
    --string-file-suffix    alter the generated filename suffix
@@ -789,6 +790,10 @@ Disable appending sub-second time to the filename.
 This causes the script to process the SOURCE(S) recursively.  This also causes
 the script to operate in a manner similar to "find -depth" so that it works from
 the bottom up.
+
+=item B<-R, --raw PATH>
+
+Instead of storing RAW files inline, this will place them in PATH.
 
 =item B<--string-file-prefix STRING>
 
