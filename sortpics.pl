@@ -671,7 +671,8 @@ sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
    -d, --debug             enable debug output
    --delta DELTA           apply DELTA to the date/time             
    -D, --dry-run           perform a trial run without making any changes
-   -f, --force             force deletion of duplicate files, rename others
+   -f, --flat              store files directly in DESTINATION
+   -F, --force             force deletion of duplicate files, rename others
    -h, --help              print a brief help message
    -i, --increment         append incremented counter to files with same names
    -l, --logic INTEGER     set advanced logic to INTEGER
@@ -741,7 +742,12 @@ Enables dryrun mode, which steps through everything that will happen without
 making any changes.  It works best with the -v, --verbose option to see what will
 happen during a real run.
    
-=item B<-f, --force>
+=item B<-F, --flat>
+
+Stores files directly in DESTINATION instead of creating the subdirectory
+structure underneath of DESTINATION.
+
+=item B<-F, --force>
 
 Enables force mode.  This causes duplicate files (identical hashes) to be
 deleted instead of being left alone.  SHA1 hashes matching pretty much
