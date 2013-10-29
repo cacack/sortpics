@@ -72,7 +72,7 @@ my @RawExtPatterns = (
 #-------------------------------------------------------------------------------
 my (
    $Cleanup, $Copy, $Debug, $Delta, $DestRawBase, $DryRun, $FileSuffixString,
-   $Force, $Help, $Increment, $Logic, $Man, $Move, $Recursive, $Verbose,
+   $Flat, $Force, $Help, $Increment, $Logic, $Man, $Move, $Recursive, $Verbose,
 );
 
 # Process commandline arguments.
@@ -82,7 +82,8 @@ GetOptions (
    'd|debug+'        => sub { $Debug++; $Verbose++; },
    'delta=s'         => \$Delta,
    'D|dry-run'       => \$DryRun,
-   'f|force'         => \$Force,
+   'f|flat'          => \$Flat,
+   'F|force'         => \$Force,
    'h|help'          => \$Help,
    'i|increment'     => \$Increment,
    'l|logic=i'       => \$Logic,
@@ -426,6 +427,8 @@ sub Process {
          else {
             $DestBase = $DestPhotoBase;
          }
+         # If the user opted for no subdirectory structure, give it to them.
+         if ($Flat) { $DatePath = ''; }
          # Build path.
          my $DestPath = File::Spec->catdir( $DestBase, $DatePath );
          # Build filename (without extension in case we have to append more).
