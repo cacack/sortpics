@@ -414,18 +414,18 @@ sub Process {
          my ($Junk, $File, $Ext) = fileparse( $SrcFileName, qr/\.[^.]*/ );
          # Force the extension to lowercase.
          $Ext = lc $Ext;
-	 # If the extension matches a RAW type,
-	 if ($Ext ~~ @RawExtPatterns) {
-	    # And if we're handling RAW files differently,
+         # If the extension matches a RAW type,
+         if ($Ext ~~ @RawExtPatterns) {
+            # And if we're handling RAW files differently,
             if ($DestRawBase) {
-	       # Set the destination to the RAW one.
-	       $DestBase = $DestRawBase;
-	    }
+               # Set the destination to the RAW one.
+               $DestBase = $DestRawBase;
+            }
          }
-	 # Otherwise, set ensure its set to the original.
-	 else {
+         # Otherwise, set ensure its set to the original.
+         else {
             $DestBase = $DestPhotoBase;
-	 }
+         }
          # Build path.
          my $DestPath = File::Spec->catdir( $DestBase, $DatePath );
          # Build filename (without extension in case we have to append more).
