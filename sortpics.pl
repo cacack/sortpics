@@ -7,7 +7,11 @@
 # vim: set ts=3 sw=3 expandtab:
 ################################################################################
 use strict;
-require 5.010.000;
+use warnings;
+
+use v5.10.1;
+no if $] >= 5.017011, warnings => 'experimental::smartmatch';
+no if $] >= 5.017011, warnings => 'experimental::autoderef';
 
 
 ################################################################################
