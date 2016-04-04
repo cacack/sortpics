@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 ################################################################################
 # sortpics.pl - Sort pictures using EXIF metadata information and more.
-# 
+#
 # Written by Chris Clonch <chris@theclonchs.com>.  See man page using -M, --man
 # for copyright and license notice.
 # vim: set ts=3 sw=3 expandtab:
@@ -43,7 +43,7 @@ my $DatePathString = "%Y/%m/%Y-%m-%d";
 # List of filename patterns to outright delete.  I've found deleting these to be
 # benign.
 my @FileNamePatterns = (
-   qr/NIKON.*\.DSC/, 
+   qr/NIKON.*\.DSC/,
    'Thumbs.db',
    '.picasa.ini',
    'Picasa.ini',
@@ -78,6 +78,9 @@ my (
    $Cleanup, $Copy, $Debug, $Delta, $DestRawBase, $DryRun, $FileSuffixString,
    $Flat, $Force, $Help, $Increment, $Logic, $Man, $Move, $Recursive, $Verbose,
 );
+
+$Debug = 0;
+$Logic = 0;
 
 # Process commandline arguments.
 GetOptions (
@@ -193,7 +196,7 @@ sub Process {
    my $SrcFileAbs    = $File::Find::name;
    my $SrcFileName   = $_;
    if ($Debug) { print "$SrcFilePath | $SrcFileAbs | $SrcFileName\n"; }
-   
+
    # Only work on files.
    if (-f $SrcFileAbs) {
       if ($Cleanup) {
@@ -223,13 +226,13 @@ sub Process {
                print "$SrcFileName: $Key -> " . $Info->{$Key} . "\n";
             }
          }
-         
+
          #----------------------------------------------------------------------
          # Parse metadata
          #----------------------------------------------------------------------
          my ($ImgDate, $DateTag);
          my $SubSec = 0;
-         # Check for metadata 
+         # Check for metadata
          if ($Info->{'DateTimeOriginal'}) {
             # Parse it.
             $ImgDate = Date::Manip::ParseDate( $Info->{'DateTimeOriginal'} );
@@ -326,11 +329,12 @@ sub Process {
                next;
             }
          }
-         
+
          #----------------------------------------------------------------------
          # Parse make/model metadata
          #----------------------------------------------------------------------
-         my $Make = $Info->{'Make'} if $Info->{'Make'};
+         my $Make = '';
+         $Make = $Info->{'Make'} if $Info->{'Make'};
          # Capitalize the first letter of each word.
          $Make =~ s/([\w']+)/\u\L$1/g;
          # Remove any spaces.
@@ -348,13 +352,14 @@ sub Process {
              $Make = 'Nikon';
          }
 
-         my $Model = $Info->{'Model'} if $Info->{'Model'};
+         my $Model = '';
+         $Model = $Info->{'Model'} if $Info->{'Model'};
          # Capitalize the first letter of each word.
          $Model =~ s/([\w']+)/\u\L$1/g;
          # Remove any spaces.
          $Model =~ s/ //g;
          my $FileAppendString;
-         
+
          unless ($Make || $Model) {
             # Don't have either so try alternate tags
             if ($Info->{'Information'}) {
@@ -366,7 +371,7 @@ sub Process {
                }
             }
          }
-         
+
          # If the Model information already contains Make
          if ($Model && $Model =~ /^$Make/) {
             # Just use Model.
@@ -381,12 +386,12 @@ sub Process {
          else {
             $FileAppendString = 'Unknown';
          }
-         
+
          if (defined $FileSuffixString) {
             # Use the user specified suffix.
             $FileAppendString = $FileSuffixString;
          }
-         
+
          #----------------------------------------------------------------------
          # Apply date/time delta
          #----------------------------------------------------------------------
@@ -406,7 +411,7 @@ sub Process {
                print "Delta not valid.\n";
             }
          }
-         
+
          #----------------------------------------------------------------------
          # Assemble new filename
          #----------------------------------------------------------------------
@@ -444,7 +449,7 @@ sub Process {
          }
          # Build absoulte file path.
          my $DestFileAbs = File::Spec->catfile( $DestPath, $DestFileName.$Ext );
-         
+
          #----------------------------------------------------------------------
          # Deal with duplicate filenames
          #----------------------------------------------------------------------
@@ -452,13 +457,13 @@ sub Process {
          my ($Dupe, $Skip) = 0;
          if (-f $DestFileAbs) {
             # It does so we use SHA1 hashes to identify if the files are the same
-            
+
             # Generate the SHA1 hash for the source file.
             open( SRCFILE, "$SrcFileAbs" ) or die "Can't open $SrcFileAbs: $!";
             binmode( SRCFILE );
             my $SrcSHA1 = Digest::SHA->new(1)->addfile( *SRCFILE )->hexdigest;
             close( SRCFILE );
-            
+
             # Loop on the new filename when we test the hashes so we can increment
             # the filename at the end until we find a filename that doesn't exist.
             my $Count = 0;
@@ -488,7 +493,7 @@ sub Process {
                   # Jump out of the while loop.
                   last;
                }
-               
+
                # If we're told to increment, do it.  Lather, rinse, repeat.
                if ($Increment) {
                   $Count++;
@@ -546,18 +551,18 @@ sub Process {
                }
             }
          }
-         
+
          if ($Move) {
             if ($Verbose) { print "Moving $SrcFileName -> $DestFileAbs\n"; }
             unless ($DryRun) { move( $SrcFileAbs, $DestFileAbs ); }
          }
-         
+
          else {
             if ($Verbose) { print "Copying $SrcFileName -> $DestFileAbs\n"; }
             unless ($DryRun) { copy( $SrcFileAbs, $DestFileAbs ); }
          }
          $Counts{'copy'}++;
-         
+
          #----------------------------------------------------------------------
          # Save adjusted date/time back to file.
          #----------------------------------------------------------------------
@@ -610,7 +615,7 @@ sub Process {
                elsif ($WarnMsg and $Debug) {
                   warn "Warning while writing metadata to $TempFile: $WarnMsg\n";
                }
-               
+
                # File::Copy may leave a partial destination file if problems
                # arise so be OCD and do a shell game to ensure file safety.
                # DestFile -> DestFile.bak
@@ -673,7 +678,7 @@ sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
  Options:
    -C, --cleanup           delete non-picture files and empty directories
    -d, --debug             enable debug output
-   --delta DELTA           apply DELTA to the date/time             
+   --delta DELTA           apply DELTA to the date/time
    -D, --dry-run           perform a trial run without making any changes
    -f, --flat              store files directly in DESTINATION
    -F, --force             force deletion of duplicate files, rename others
@@ -685,7 +690,7 @@ sortpics.pl [options] SOURCE [SOURCE...] DESTINATION
    --nosubsec              disable appending sub-seconds to filename
    -r, --recursive         recurse into directories
    -R, --raw               raw file destination
-   --string-dir            alter the generated directory path 
+   --string-dir            alter the generated directory path
    --string-file-prefix    alter the generated filename prefix
    --string-file-suffix    alter the generated filename suffix
    -v, --verbose           enable output
@@ -698,7 +703,7 @@ metadata. Its purpose is to bring order and sanity to digital media organization
 By using the filename's create date/time, it creates a directory structure and
 filename that arranges everything cronologically.
 
-The script will use the either the "DateTimeOriginal", "DateTimeDigitized, 
+The script will use the either the "DateTimeOriginal", "DateTimeDigitized,
 "CreateDate" tags or their sub-second equals; whichever is found first.  This
 can be adjusted using the B<-l, --logic INTEGER> argument to enable advanced
 heursitics.
@@ -745,7 +750,7 @@ such as "+ 1 year" or "subtract 1 month, 8 days".
 Enables dryrun mode, which steps through everything that will happen without
 making any changes.  It works best with the -v, --verbose option to see what will
 happen during a real run.
-   
+
 =item B<-F, --flat>
 
 Stores files directly in DESTINATION instead of creating the subdirectory
@@ -812,7 +817,7 @@ Any valid Date::Manip::Date printf directive is supported.
 
 =item B<--string-file-suffix STRING>
 
-This can be used to change the filename suffix from the default camera make and 
+This can be used to change the filename suffix from the default camera make and
 model.  Variables $Make and $Model may be used, which will eval'ed into their
 correct values.
 
