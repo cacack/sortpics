@@ -751,7 +751,7 @@ Enables dryrun mode, which steps through everything that will happen without
 making any changes.  It works best with the -v, --verbose option to see what will
 happen during a real run.
 
-=item B<-F, --flat>
+=item B<-f, --flat>
 
 Stores files directly in DESTINATION instead of creating the subdirectory
 structure underneath of DESTINATION.
